@@ -15,8 +15,8 @@ function App() {
   }
 
   return (
-    <div>
-      <h1>Order Management Dashboard</h1>
+    <div style={{ padding: "30px" }}>
+      <h1>Restaurant Order Management System</h1>
 
       <h2>Total Customers: {dashboard.total_customers}</h2>
       <h2>Total Orders: {dashboard.total_orders}</h2>
