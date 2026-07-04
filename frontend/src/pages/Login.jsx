@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { addToCart } from "../api/orders";
-import { ForkKnife, Eye, EyeSlash, ShieldCheck, Clock, Truck } from "@phosphor-icons/react";
+import { ForkKnife, Eye, EyeSlash, User, Lock, Clock, Truck, ShieldCheck } from "@phosphor-icons/react";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -83,48 +83,60 @@ export default function Login() {
           <h1 className="auth-title">Welcome back</h1>
           <p className="auth-subtitle">Sign in to your account to continue</p>
 
-          {error && <div className="alert alert-error">{error}</div>}
+          {error && (
+            <div className="alert alert-error">
+              <span>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="auth-form">
-            <div className="form-group">
-              <label>Username</label>
+            <div className="auth-input-group">
+              <div className="auth-input-icon">
+                <User size={18} weight="duotone" />
+              </div>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                placeholder="Enter your username"
+                placeholder="Username"
                 autoComplete="username"
                 autoFocus
               />
             </div>
 
-            <div className="form-group" style={{ position: "relative" }}>
-              <label>Password</label>
+            <div className="auth-input-group">
+              <div className="auth-input-icon">
+                <Lock size={18} weight="duotone" />
+              </div>
               <input
                 type={showPwd ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                placeholder="Enter your password"
+                placeholder="Password"
                 autoComplete="current-password"
                 style={{ paddingRight: "44px" }}
               />
               <button
                 type="button"
+                className="auth-pwd-toggle"
                 onClick={() => setShowPwd(!showPwd)}
-                style={{
-                  position: "absolute", right: "12px", bottom: "10px",
-                  background: "none", border: "none", cursor: "pointer",
-                  color: "var(--text-muted)", padding: "0", display: "flex",
-                }}
               >
                 {showPwd ? <EyeSlash size={18} /> : <Eye size={18} />}
               </button>
             </div>
 
+            <div className="auth-options">
+              <label className="auth-checkbox">
+                <input type="checkbox" defaultChecked />
+                <span className="auth-checkbox-mark" />
+                Remember me
+              </label>
+            </div>
+
             <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}
-              style={{ marginTop: "8px" }}>
+              style={{ marginTop: "6px" }}>
               {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>

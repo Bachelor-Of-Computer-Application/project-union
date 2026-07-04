@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { register } from "../api/auth";
-import { ForkKnife, Eye, EyeSlash, CheckCircle } from "@phosphor-icons/react";
+import { ForkKnife, Eye, EyeSlash, CheckCircle, User, Envelope, Phone, Lock } from "@phosphor-icons/react";
 
 const BENEFITS = [
   "Browse 100+ menu items from local restaurants",
@@ -76,54 +76,60 @@ export default function Register() {
 
           <form onSubmit={handleSubmit} className="auth-form">
             <div className="form-row">
-              <div className="form-group">
-                <label>Full Name</label>
-                <input name="name" value={form.name} onChange={handleChange} required placeholder="Your full name" />
+              <div className="auth-input-group">
+                <div className="auth-input-icon">
+                  <User size={18} weight="duotone" />
+                </div>
+                <input name="name" value={form.name} onChange={handleChange} required placeholder="Full Name" />
               </div>
-              <div className="form-group">
-                <label>Username</label>
-                <input name="username" value={form.username} onChange={handleChange} required placeholder="e.g. john_doe" />
+              <div className="auth-input-group">
+                <div className="auth-input-icon">
+                  <User size={18} weight="duotone" />
+                </div>
+                <input name="username" value={form.username} onChange={handleChange} required placeholder="Username" />
               </div>
             </div>
 
-            <div className="form-group">
-              <label>Email Address</label>
-              <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="your@email.com" />
+            <div className="auth-input-group">
+              <div className="auth-input-icon">
+                <Envelope size={18} weight="duotone" />
+              </div>
+              <input type="email" name="email" value={form.email} onChange={handleChange} required placeholder="Email Address" />
             </div>
 
-            <div className="form-group">
-              <label>Phone Number</label>
-              <input name="phone" value={form.phone} onChange={handleChange} required placeholder="98XXXXXXXX" />
+            <div className="auth-input-group">
+              <div className="auth-input-icon">
+                <Phone size={18} weight="duotone" />
+              </div>
+              <input name="phone" value={form.phone} onChange={handleChange} required placeholder="Phone Number" />
             </div>
 
-            <div className="form-group" style={{ position: "relative" }}>
-              <label>Password</label>
+            <div className="auth-input-group">
+              <div className="auth-input-icon">
+                <Lock size={18} weight="duotone" />
+              </div>
               <input
                 type={showPwd ? "text" : "password"}
                 name="password"
                 value={form.password}
                 onChange={handleChange}
                 required
-                placeholder="Minimum 6 characters"
+                placeholder="Password (min 6 chars)"
                 minLength={6}
                 style={{ paddingRight: "44px" }}
                 autoComplete="new-password"
               />
               <button
                 type="button"
+                className="auth-pwd-toggle"
                 onClick={() => setShowPwd(!showPwd)}
-                style={{
-                  position: "absolute", right: "12px", bottom: "10px",
-                  background: "none", border: "none", cursor: "pointer",
-                  color: "var(--text-muted)", padding: "0", display: "flex",
-                }}
               >
                 {showPwd ? <EyeSlash size={18} /> : <Eye size={18} />}
               </button>
             </div>
 
             <button type="submit" className="btn btn-primary btn-block btn-lg" disabled={loading}
-              style={{ marginTop: "8px" }}>
+              style={{ marginTop: "10px" }}>
               {loading ? "Creating account..." : "Create Account"}
             </button>
           </form>
