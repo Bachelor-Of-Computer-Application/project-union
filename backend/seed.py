@@ -31,13 +31,13 @@ print("Seeding data...")
 
 # ── Users & Customers ──────────────────────────────────────────────
 users_data = [
-    ("admin",     "admin@example.com",     True,  True,  "Admin",        "9800000000"),
-    ("ram",       "ram@example.com",       False, False, "Ram Sharma",   "9811111111"),
-    ("sita",      "sita@example.com",      False, False, "Sita Gurung",  "9822222222"),
-    ("hari",      "hari@example.com",      False, False, "Hari KC",      "9833333333"),
-    ("gita",      "gita@example.com",      False, False, "Gita Pandey",  "9844444444"),
-    ("arun",      "arun@example.com",      False, False, "Arun Thapa",   "9855555555"),
-    ("maya",      "maya@example.com",      False, False, "Maya Rai",     "9866666666"),
+    ("admin",      "admin@example.com",      True,  True,  "Admin",          "9800000000"),
+    ("dikshya",    "dikshya@example.com",    False, False, "Dikshya",        "9806194103"),
+    ("aska",       "aska@example.com",       False, False, "Aska",           "9800000000"),
+    ("hema",       "hema@example.com",       False, False, "Hema",           "9810000000"),
+    ("aashika",    "aashika@example.com",    False, False, "Aashika",        "9820000000"),
+    ("dibash",     "dibash@example.com",     False, False, "Dibash",         "9700000000"),
+    ("sabina",     "sabina@example.com",     False, False, "Sabina",         "123456789"),
 ]
 users = {}
 for uname, email, is_super, is_staff, cname, phone in users_data:
@@ -48,7 +48,7 @@ for uname, email, is_super, is_staff, cname, phone in users_data:
     if created:
         u.set_password("password123")
         u.save()
-    Customer.objects.get_or_create(user=u, defaults={"name": cname, "phone": phone})
+    Customer.objects.get_or_create(user=u, defaults={"name": cname, "phone": phone, "email": email})
     users[uname] = u
     print(f"  User: {uname} / password123" + (" (admin)" if is_super else ""))
 
@@ -198,5 +198,5 @@ for mi in MenuItem.objects.filter(recipes__isnull=False).distinct():
 
 print("\n✅ Seed complete!")
 print("   Admin: admin / password123")
-print("   Users: ram, sita, hari, gita, arun, maya / password123")
+print("   Users: dikshya, aska, hema, aashika, dibash, sabina / password123")
 print(f"   {len(customers)} customers, {oc} orders, {rc} recipes")
