@@ -32,12 +32,12 @@ print("Seeding data...")
 # ── Users & Customers ──────────────────────────────────────────────
 users_data = [
     ("admin",     "admin@example.com",     True,  True,  "Admin",        "9800000000"),
-    ("customer1", "customer1@example.com", False, False, "Ram Sharma",   "9811111111"),
-    ("customer2", "customer2@example.com", False, False, "Sita Gurung",  "9822222222"),
-    ("customer3", "customer3@example.com", False, False, "Hari KC",      "9833333333"),
-    ("customer4", "customer4@example.com", False, False, "Gita Pandey",  "9844444444"),
-    ("customer5", "customer5@example.com", False, False, "Arun Thapa",   "9855555555"),
-    ("customer6", "customer6@example.com", False, False, "Maya Rai",     "9866666666"),
+    ("ram",       "ram@example.com",       False, False, "Ram Sharma",   "9811111111"),
+    ("sita",      "sita@example.com",      False, False, "Sita Gurung",  "9822222222"),
+    ("hari",      "hari@example.com",      False, False, "Hari KC",      "9833333333"),
+    ("gita",      "gita@example.com",      False, False, "Gita Pandey",  "9844444444"),
+    ("arun",      "arun@example.com",      False, False, "Arun Thapa",   "9855555555"),
+    ("maya",      "maya@example.com",      False, False, "Maya Rai",     "9866666666"),
 ]
 users = {}
 for uname, email, is_super, is_staff, cname, phone in users_data:
@@ -198,5 +198,5 @@ for mi in MenuItem.objects.filter(recipes__isnull=False).distinct():
 
 print("\n✅ Seed complete!")
 print("   Admin: admin / password123")
-print("   Users: customer1–customer6 / password123")
+print("   Users: ram, sita, hari, gita, arun, maya / password123")
 print(f"   {len(customers)} customers, {oc} orders, {rc} recipes")

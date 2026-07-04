@@ -23,7 +23,7 @@ Open `http://localhost:5173` in browser.
 | Role     | Username     | Password     |
 |----------|-------------|--------------|
 | Admin    | `admin`     | `password123`|
-| Customer | `customer1`–`customer6` | `password123` |
+| Customer | `ram`, `sita`, `hari`, `gita`, `arun`, `maya` | `password123` |
 
 ## Seed Data
 
