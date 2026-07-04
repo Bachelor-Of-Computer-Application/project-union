@@ -1,4 +1,4 @@
-from rest_framework import generics, status
+from rest_framework import generics
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -16,6 +16,7 @@ class OrderListAPIView(generics.ListCreateAPIView):
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
+
 class OrderUpdateAPIView(generics.UpdateAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
@@ -24,12 +25,18 @@ class OrderUpdateAPIView(generics.UpdateAPIView):
     def patch(self, request, *args, **kwargs):
         order = self.get_object()
 
-        order.status = request.data.get("status", order.status)
+        if "status" in request.data:
+            order.status = request.data["status"]
+
+        if "payment_method" in request.data:
+            order.payment_method = request.data["payment_method"]
+
+        if "payment_status" in request.data:
+            order.payment_status = request.data["payment_status"]
+
         order.save()
 
-        serializer = OrderSerializer(order)
-
-        return Response(serializer.data)
+        return Response(OrderSerializer(order).data)
 
 
 class DashboardAPIView(APIView):
@@ -40,7 +47,8 @@ class DashboardAPIView(APIView):
         recent_orders = Order.objects.order_by("-order_date")[:5]
 
         total_revenue = sum(
-            order.total_amount for order in Order.objects.all()
+            order.total_amount
+            for order in Order.objects.filter(payment_status="Paid")
         )
 
         return Response({
@@ -52,6 +60,9 @@ class DashboardAPIView(APIView):
             "total_orders": Order.objects.count(),
             "pending_orders": Order.objects.filter(
                 status="Pending"
+            ).count(),
+            "paid_orders": Order.objects.filter(
+                payment_status="Paid"
             ).count(),
             "low_stock_items": InventoryItem.objects.filter(
                 quantity__lte=10

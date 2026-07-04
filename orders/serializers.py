@@ -3,7 +3,10 @@ from .models import Order
 
 
 class OrderSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    customer_name = serializers.CharField(
+        source="customer.name",
+        read_only=True
+    )
 
     class Meta:
         model = Order
@@ -12,6 +15,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "customer",
             "customer_name",
             "status",
+            "payment_method",
+            "payment_status",
             "total_amount",
             "order_date",
         ]
@@ -19,4 +24,6 @@ class OrderSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "customer": {"required": False},
             "total_amount": {"required": False},
+            "payment_method": {"required": False},
+            "payment_status": {"required": False},
         }

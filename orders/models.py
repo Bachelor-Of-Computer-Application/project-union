@@ -13,7 +13,19 @@ class Order(models.Model):
         ('Cancelled', 'Cancelled'),
     ]
 
+    PAYMENT_METHODS = [
+        ('Cash', 'Cash'),
+        ('Card', 'Card'),
+        ('eSewa', 'eSewa'),
+    ]
+
+    PAYMENT_STATUS = [
+        ('Pending', 'Pending'),
+        ('Paid', 'Paid'),
+    ]
+
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
+
     order_date = models.DateTimeField(auto_now_add=True)
 
     status = models.CharField(
@@ -26,6 +38,18 @@ class Order(models.Model):
         max_digits=10,
         decimal_places=2,
         default=0
+    )
+
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHODS,
+        default='Cash'
+    )
+
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS,
+        default='Pending'
     )
 
     def calculate_total(self):
@@ -42,8 +66,11 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE)
+
     menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE)
+
     quantity = models.PositiveIntegerField(default=1)
 
     def save(self, *args, **kwargs):
