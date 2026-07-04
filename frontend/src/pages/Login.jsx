@@ -18,7 +18,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(username, password);
+      const user = await login(username, password);
       const intent = sessionStorage.getItem("cart_intent");
       if (intent) {
         sessionStorage.removeItem("cart_intent");
@@ -28,11 +28,11 @@ export default function Login() {
           navigate("/cart");
           return;
         } catch {
-          navigate("/menu");
+          navigate(user?.is_admin ? "/" : "/menu");
           return;
         }
       }
-      navigate("/menu");
+      navigate(user?.is_admin ? "/" : "/menu");
     } catch (err) {
       setError(err.response?.data?.detail || "Invalid username or password. Please try again.");
     } finally {

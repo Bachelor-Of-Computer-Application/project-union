@@ -24,3 +24,29 @@ class MenuItem(models.Model):
 
     def __str__(self):
         return self.name
+
+    def check_inventory(self):
+        recipes = self.recipes.all()
+        if not recipes.exists():
+            return True
+        for r in recipes:
+            if r.inventory_item.quantity < r.quantity_required:
+                return False
+        return True
+
+    def auto_availability(self):
+        self.is_available = self.check_inventory()
+        self.save(update_fields=["is_available"])
+
+
+class MenuItemRecipe(models.Model):
+    menu_item = models.ForeignKey(MenuItem, on_delete=models.CASCADE, related_name="recipes")
+    inventory_item = models.ForeignKey("inventory.InventoryItem", on_delete=models.CASCADE)
+    quantity_required = models.DecimalField(max_digits=10, decimal_places=2, default=1)
+
+    class Meta:
+        verbose_name_plural = "menu item recipes"
+        unique_together = [["menu_item", "inventory_item"]]
+
+    def __str__(self):
+        return f"{self.menu_item.name} → {self.inventory_item.name} x{self.quantity_required}"

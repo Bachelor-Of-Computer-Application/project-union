@@ -1,3 +1,6 @@
+from collections import defaultdict
+from django.db.models import F
+from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
@@ -163,6 +166,31 @@ class AdminOrderListAPIView(generics.ListAPIView):
         return super().get(request, *args, **kwargs)
 
 
+def update_inventory_for_order(order, deduct=True):
+    from menu.models import MenuItemRecipe
+    multiplier = -1 if deduct else 1
+    for order_item in order.items.all():
+        recipes = MenuItemRecipe.objects.filter(menu_item=order_item.menu_item)
+        for r in recipes:
+            inv = r.inventory_item
+            needed = r.quantity_required * order_item.quantity
+            if deduct:
+                if inv.quantity >= needed:
+                    inv.quantity -= needed
+                else:
+                    inv.quantity = 0
+            else:
+                inv.quantity += needed
+            inv.save()
+            # Auto-availability
+            for mi in r.menu_item.recipes.values_list("menu_item", flat=True):
+                from menu.models import MenuItem
+                try:
+                    MenuItem.objects.get(id=mi).auto_availability()
+                except MenuItem.DoesNotExist:
+                    pass
+
+
 class AdminOrderUpdateAPIView(generics.UpdateAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderStatusUpdateSerializer
@@ -172,6 +200,14 @@ class AdminOrderUpdateAPIView(generics.UpdateAPIView):
         if not request.user.is_superuser:
             return Response({"error": "Admin access required"}, status=403)
         order = self.get_object()
+        old_status = order.status
+        status_changed = "status" in request.data and request.data["status"] != old_status
+        if status_changed:
+            new_status = request.data["status"]
+            if new_status == "Preparing" and old_status != "Preparing":
+                update_inventory_for_order(order, deduct=True)
+            elif new_status == "Cancelled" and old_status == "Preparing":
+                update_inventory_for_order(order, deduct=False)
         if "status" in request.data:
             order.status = request.data["status"]
         if "payment_status" in request.data:
@@ -189,16 +225,30 @@ class DashboardAPIView(APIView):
         from accounts.models import Customer
         from menu.models import MenuItem
         from inventory.models import InventoryItem
+        from django.contrib.auth.models import User
 
-        total_revenue = sum(
-            order.total_amount
-            for order in Order.objects.filter(payment_status="Paid")
-        )
+        paid_orders = Order.objects.filter(payment_status="Paid")
+        total_revenue = sum(o.total_amount for o in paid_orders)
+
+        # Monthly revenue for last 12 calendar months
+        rev_by_month = defaultdict(float)
+        for o in paid_orders:
+            rev_by_month[o.order_date.strftime("%Y-%m")] += float(o.total_amount)
+        now = timezone.now()
+        revenue_trend = []
+        for i in range(11, -1, -1):
+            m = now.month - i
+            y = now.year
+            while m < 1:
+                m += 12
+                y -= 1
+            key = f"{y}-{m:02d}"
+            revenue_trend.append(round(rev_by_month.get(key, 0), 2))
 
         recent_orders = Order.objects.order_by("-order_date")[:5]
 
         return Response({
-            "total_customers": Customer.objects.count(),
+            "total_customers": User.objects.count(),
             "total_menu_items": MenuItem.objects.count(),
             "available_menu_items": MenuItem.objects.filter(is_available=True).count(),
             "total_orders": Order.objects.count(),
@@ -207,8 +257,9 @@ class DashboardAPIView(APIView):
             "out_for_delivery": Order.objects.filter(status="Out for Delivery").count(),
             "delivered_orders": Order.objects.filter(status="Delivered").count(),
             "paid_orders": Order.objects.filter(payment_status="Paid").count(),
-            "low_stock_items": InventoryItem.objects.filter(quantity__lte=10).count(),
+            "low_stock_items": InventoryItem.objects.filter(quantity__lte=F("low_stock_limit")).count(),
             "total_revenue": float(total_revenue),
+            "revenue_trend": revenue_trend,
             "recent_orders": OrderSerializer(recent_orders, many=True).data,
         })
 

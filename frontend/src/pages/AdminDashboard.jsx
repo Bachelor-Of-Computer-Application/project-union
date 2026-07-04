@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getAdminOrders, adminUpdateOrder, getDashboard } from "../api/orders";
-import { getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem, getMenuCategories } from "../api/menu";
+import { getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem, getMenuCategories, getRecipes, createRecipe, deleteRecipe } from "../api/menu";
 import { getInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem } from "../api/inventory";
 import { adminGetUsers, adminToggleUserActive, adminGetPayments } from "../api/accounts";
 import {
@@ -10,12 +10,17 @@ import {
   CurrencyDollar, UserSwitch,
 } from "@phosphor-icons/react";
 
-const STATUS_BADGE = {
-  "Order Placed":     "badge-warning",
-  Preparing:          "badge-info",
-  "Out for Delivery": "badge-primary",
-  Delivered:          "badge-success",
-  Cancelled:          "badge-danger",
+const STATUS_COLORS = {
+  "Order Placed":     "#f59e0b",
+  Preparing:          "#3b82f6",
+  "Out for Delivery": "#f25f3a",
+  Delivered:          "#22c55e",
+  Cancelled:          "#ef4444",
+};
+
+const PAYMENT_COLORS = {
+  Pending: "#f59e0b",
+  Paid:    "#22c55e",
 };
 
 export default function AdminDashboard() {
@@ -33,6 +38,9 @@ export default function AdminDashboard() {
   const [imageFile, setImageFile] = useState(null);
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [showInvForm, setShowInvForm] = useState(false);
+  const [editInv, setEditInv] = useState(null);
+  const [invForm, setInvForm] = useState({ name: "", quantity: "", unit: "", low_stock_limit: "" });
 
   const fetchAll = () => {
     setLoading(true);
@@ -92,6 +100,23 @@ export default function AdminDashboard() {
 
   const handleDeleteInventory = async (id) => {
     if (confirm("Delete this inventory item?")) { await deleteInventoryItem(id); fetchAll(); }
+  };
+
+  const resetInvForm = () => {
+    setInvForm({ name: "", quantity: "", unit: "", low_stock_limit: "" });
+    setEditInv(null); setShowInvForm(false);
+  };
+
+  const handleEditInv = (item) => {
+    setInvForm({ name: item.name, quantity: item.quantity, unit: item.unit, low_stock_limit: item.low_stock_limit });
+    setEditInv(item); setShowInvForm(true);
+  };
+
+  const handleInvSubmit = async () => {
+    const data = { ...invForm, quantity: Number(invForm.quantity), low_stock_limit: Number(invForm.low_stock_limit) };
+    if (editInv) { await updateInventoryItem(editInv.id, data); }
+    else { await createInventoryItem(data); }
+    resetInvForm(); fetchAll();
   };
 
   if (loading) {
@@ -183,25 +208,39 @@ export default function AdminDashboard() {
                       <td>{o.customer_name}</td>
                       <td style={{ fontWeight: 600, color: "var(--text)" }}>Rs {o.total_amount}</td>
                       <td>
-                        <select
-                          value={o.status}
-                          onChange={(e) => handleOrderStatus(o.id, e.target.value)}
-                          className="form-select-sm"
-                        >
-                          {["Order Placed", "Preparing", "Out for Delivery", "Delivered", "Cancelled"].map((s) => (
-                            <option key={s}>{s}</option>
-                          ))}
-                        </select>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{
+                            width: 8, height: 8, borderRadius: "50%",
+                            background: STATUS_COLORS[o.status] || "#6b7280",
+                            display: "inline-block", flexShrink: 0,
+                          }} />
+                          <select
+                            value={o.status}
+                            onChange={(e) => handleOrderStatus(o.id, e.target.value)}
+                            className="form-select-sm"
+                          >
+                            {["Order Placed", "Preparing", "Out for Delivery", "Delivered", "Cancelled"].map((s) => (
+                              <option key={s}>{s}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
                       <td>
-                        <select
-                          value={o.payment_status}
-                          onChange={(e) => handlePaymentStatus(o.id, e.target.value)}
-                          className="form-select-sm"
-                        >
-                          <option>Pending</option>
-                          <option>Paid</option>
-                        </select>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <span style={{
+                            width: 8, height: 8, borderRadius: "50%",
+                            background: PAYMENT_COLORS[o.payment_status] || "#6b7280",
+                            display: "inline-block", flexShrink: 0,
+                          }} />
+                          <select
+                            value={o.payment_status}
+                            onChange={(e) => handlePaymentStatus(o.id, e.target.value)}
+                            className="form-select-sm"
+                          >
+                            <option>Pending</option>
+                            <option>Paid</option>
+                          </select>
+                        </div>
                       </td>
                       <td style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>
                         {new Date(o.order_date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
@@ -260,6 +299,22 @@ export default function AdminDashboard() {
               </div>
               <div className="form-group">
                 <label>Photo</label>
+                {editMenuItem?.image && !imageFile && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <img src={editMenuItem.image} alt={editMenuItem.name}
+                      style={{ width: "120px", height: "80px", objectFit: "cover", borderRadius: "var(--r-sm)",
+                        border: "1.5px solid var(--border)" }} />
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "4px" }}>Current image</div>
+                  </div>
+                )}
+                {imageFile && (
+                  <div style={{ marginBottom: "8px" }}>
+                    <img src={URL.createObjectURL(imageFile)} alt="Preview"
+                      style={{ width: "120px", height: "80px", objectFit: "cover", borderRadius: "var(--r-sm)",
+                        border: "1.5px solid var(--primary)" }} />
+                    <div style={{ fontSize: "0.75rem", color: "var(--primary)", marginTop: "4px" }}>New image</div>
+                  </div>
+                )}
                 <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0] || null)} />
                 <div className="form-hint">JPG or PNG, max 5MB. Recommended: 800×600px.</div>
               </div>
@@ -280,6 +335,7 @@ export default function AdminDashboard() {
                     <th>Name</th>
                     <th>Category</th>
                     <th>Price</th>
+                    <th>Recipe</th>
                     <th>Status</th>
                     <th>Actions</th>
                   </tr>
@@ -292,6 +348,13 @@ export default function AdminDashboard() {
                         <span className="badge badge-secondary">{item.category_name || item.category}</span>
                       </td>
                       <td style={{ fontWeight: 600, color: "var(--text)" }}>Rs {item.price}</td>
+                      <td style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        {item.recipes?.length > 0 ? (
+                          <span>{item.recipes.length} ingredient{item.recipes.length > 1 ? "s" : ""}</span>
+                        ) : (
+                          <span style={{ opacity: 0.5 }}>—</span>
+                        )}
+                      </td>
                       <td>
                         {item.is_available
                           ? <span className="badge badge-success"><CheckCircle size={12} weight="fill" /> Available</span>
@@ -321,10 +384,46 @@ export default function AdminDashboard() {
         <div className="section">
           <div className="section-header">
             <h2>Inventory</h2>
-            <span className="text-muted" style={{ fontSize: "0.875rem" }}>
-              {inventory.filter((i) => i.quantity <= i.low_stock_limit).length} items low on stock
-            </span>
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <span className="text-muted" style={{ fontSize: "0.875rem" }}>
+                {inventory.filter((i) => i.quantity <= i.low_stock_limit).length} low stock
+              </span>
+              <button className="btn btn-primary btn-sm" onClick={() => { resetInvForm(); setShowInvForm(true); }}>
+                <Plus size={15} weight="bold" /> Add Item
+              </button>
+            </div>
           </div>
+
+          {showInvForm && (
+            <div className="form-card">
+              <h3>{editInv ? "Edit Inventory Item" : "Add Inventory Item"}</h3>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Item Name</label>
+                  <input value={invForm.name} onChange={(e) => setInvForm({ ...invForm, name: e.target.value })} required placeholder="e.g. Tomato" />
+                </div>
+                <div className="form-group">
+                  <label>Unit</label>
+                  <input value={invForm.unit} onChange={(e) => setInvForm({ ...invForm, unit: e.target.value })} required placeholder="kg, ltr, pcs" />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Quantity</label>
+                  <input type="number" min="0" step="0.01" value={invForm.quantity} onChange={(e) => setInvForm({ ...invForm, quantity: e.target.value })} required />
+                </div>
+                <div className="form-group">
+                  <label>Low Stock Limit</label>
+                  <input type="number" min="1" value={invForm.low_stock_limit} onChange={(e) => setInvForm({ ...invForm, low_stock_limit: e.target.value })} required />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button className="btn btn-primary" onClick={handleInvSubmit}>{editInv ? "Update" : "Create"}</button>
+                <button className="btn btn-outline" onClick={resetInvForm}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: "var(--r)", overflow: "hidden" }}>
             <div className="table-responsive">
               <table className="table">
@@ -355,9 +454,14 @@ export default function AdminDashboard() {
                             : <span className="badge badge-success"><CheckCircle size={12} weight="fill" /> In Stock</span>}
                         </td>
                         <td>
-                          <button className="btn btn-xs btn-danger" onClick={() => handleDeleteInventory(item.id)}>
-                            <Trash size={13} /> Remove
-                          </button>
+                          <div style={{ display: "flex", gap: "6px" }}>
+                            <button className="btn btn-xs btn-outline" onClick={() => handleEditInv(item)}>
+                              <PencilSimple size={13} /> Edit
+                            </button>
+                            <button className="btn btn-xs btn-danger" onClick={() => handleDeleteInventory(item.id)}>
+                              <Trash size={13} /> Remove
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

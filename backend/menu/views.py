@@ -1,9 +1,14 @@
-from rest_framework import generics, filters
+from rest_framework import generics, filters, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 
-from .models import MenuItem, Category
-from .serializers import MenuItemSerializer, MenuItemWriteSerializer, CategorySerializer, CategoryWithItemsSerializer
+from .models import MenuItem, Category, MenuItemRecipe
+from .serializers import (
+    MenuItemSerializer, MenuItemWriteSerializer, CategorySerializer,
+    CategoryWithItemsSerializer, MenuItemRecipeWriteSerializer,
+)
 
 
 class MenuItemListAPIView(generics.ListAPIView):
@@ -44,3 +49,28 @@ class CategoryWithItemsAPIView(generics.ListAPIView):
     queryset = Category.objects.prefetch_related("items").all()
     serializer_class = CategoryWithItemsSerializer
     permission_classes = [AllowAny]
+
+
+class MenuItemRecipeListCreateAPIView(generics.ListCreateAPIView):
+    queryset = MenuItemRecipe.objects.all()
+    serializer_class = MenuItemRecipeWriteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        recipe = serializer.save()
+        recipe.menu_item.auto_availability()
+
+
+class MenuItemRecipeDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = MenuItemRecipe.objects.all()
+    serializer_class = MenuItemRecipeWriteSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_update(self, serializer):
+        recipe = serializer.save()
+        recipe.menu_item.auto_availability()
+
+    def perform_destroy(self, instance):
+        mi = instance.menu_item
+        instance.delete()
+        mi.auto_availability()

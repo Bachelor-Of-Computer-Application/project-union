@@ -21,3 +21,15 @@ export const updateMenuItem = (id, data) =>
 
 export const deleteMenuItem = (id) =>
   client.delete(`/menu/manage/${id}/`);
+
+export const getRecipes = () =>
+  client.get("/menu/recipes/");
+
+export const createRecipe = (data) =>
+  client.post("/menu/recipes/", data);
+
+export const updateRecipe = (id, data) =>
+  client.patch(`/menu/recipes/${id}/`, data);
+
+export const deleteRecipe = (id) =>
+  client.delete(`/menu/recipes/${id}/`);

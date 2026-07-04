@@ -3,7 +3,7 @@ from django.db import models
 
 class InventoryItem(models.Model):
     name = models.CharField(max_length=100)
-    quantity = models.PositiveIntegerField(default=0)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     unit = models.CharField(max_length=50, default="kg")
     low_stock_limit = models.PositiveIntegerField(default=10)
     created_at = models.DateTimeField(auto_now_add=True)

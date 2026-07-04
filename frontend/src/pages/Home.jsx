@@ -77,7 +77,7 @@ export default function Home() {
   const deliveredPct = totalOrders
     ? Math.round(((data?.delivered_orders || 0) / totalOrders) * 100) : 0;
 
-  const mockRevenueTrend = [1200, 1850, 1400, 2200, 1900, 2600, 2400, 3100, 2800, 3400, 3200, 3800];
+  const revenueTrend = data?.revenue_trend?.length ? data.revenue_trend : [];
 
   const kpiCards = [
     {
@@ -165,7 +165,7 @@ export default function Home() {
               Rs {(data?.total_revenue || 0).toLocaleString()}
             </span>
           </div>
-          <MiniLineChart data={mockRevenueTrend} color="var(--success)" />
+          <MiniLineChart data={revenueTrend} color="var(--success)" />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.6875rem", color: "var(--text-muted)", marginTop: "6px" }}>
             <span>Jan</span><span>Apr</span><span>Jul</span><span>Oct</span><span>Dec</span>
           </div>
