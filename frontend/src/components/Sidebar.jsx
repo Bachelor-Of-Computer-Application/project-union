@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   ForkKnife, House, ClipboardText, Package,
   ShoppingCart, Users, ChartBar,
@@ -6,6 +7,7 @@ import {
   SignIn, UserPlus, Fire,
 } from "@phosphor-icons/react";
 import { useAuth } from "../context/AuthContext";
+import { getCart } from "../api/orders";
 
 const ADMIN_NAV = [
   {
@@ -77,6 +79,17 @@ export default function Sidebar({ collapsed, onToggle }) {
   const { user, isAuthenticated, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.is_admin) return;
+    getCart()
+      .then((res) => {
+        const count = res.data?.items?.reduce((sum, i) => sum + i.quantity, 0) || 0;
+        setCartCount(count);
+      })
+      .catch(() => {});
+  }, [isAuthenticated, user, location.pathname]);
 
   const nav = user?.is_admin
     ? ADMIN_NAV
@@ -126,6 +139,9 @@ export default function Sidebar({ collapsed, onToggle }) {
                     >
                       <Icon size={18} weight={active ? "fill" : "regular"} className="sb-icon" />
                       <span className="sb-label">{item.label}</span>
+                      {item.path === "/cart" && cartCount > 0 && (
+                        <span className="sb-cart-count">{cartCount}</span>
+                      )}
                     </Link>
               );
             })}

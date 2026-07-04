@@ -69,18 +69,18 @@ print(f"  {len(cat_names)} categories")
 menu_data = [
     ("Chicken Momo",       "Momo",          210.00, "chicken.jpg",             True),
     ("Buff Momo",          "Momo",          180.00, "buff.jpeg",               True),
-    ("Chicken Pizza",      "Pizza",         600.00, "chicken-pizza.jpg",       True),
+    ("Chicken Pizza",      "Pizza",         600.00, "chicken-pizza.jpeg",      True),
     ("Mushroom Pizza",     "Pizza",         500.00, "Mushroom-Pizza.jpg",      True),
     ("Chicken Biryani",    "Biryani",       700.00, "Chicken-Biryani.jpg",     True),
     ("Mutton Biryani",     "Biryani",      1000.00, "mutton-briyani.jpg",     True),
     ("Coke",               "Drinks",         70.00, "coke.png",               True),
     ("Sprite",             "Drinks",         50.00, "sprite.jpg",              True),
     ("Fanta",              "Drinks",         70.00, "fanta.jpeg",              True),
-    ("Chicken Wings",      "Hot Wings",     150.00, "chicken-wings.jpg",       True),
-    ("Keema Noodles",      "Keema Noodles", 150.00, "keema-noodles.jpg",       True),
+    ("Chicken Wings",      "Hot Wings",     150.00, "chicken-wings.jpeg",      True),
+    ("Keema Noodles",      "Keema Noodles", 150.00, "keema-noodles.webp",      True),
     ("Dry Lafing",         "Lafing",         80.00, "lafing.jpeg",             True),
-    ("Wai Wai Lafing",     "Lafing",        100.00, "wiwi-lafing.jpg",         True),
-    ("Chicken Sausage",     "Sausage",       50.00, "chicken-sausage.jpg",     True),
+    ("Wai Wai Lafing",     "Lafing",        100.00, "wiwi-lafing.jpeg",        True),
+    ("Chicken Sausage",     "Sausage",       50.00, "chicken-sausages.jpg",    True),
 ]
 for name, cat_name, price, img, avail in menu_data:
     mi, _ = MenuItem.objects.get_or_create(

@@ -2,7 +2,13 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCart, checkout } from "../api/orders";
 import { getAddresses, createAddress } from "../api/accounts";
-import { CurrencyDollar } from "@phosphor-icons/react";
+import { CurrencyDollar, MapPin, Check, ShoppingCart, Truck, ClipboardText } from "@phosphor-icons/react";
+
+const STEPS = [
+  { label: "Review Cart",    icon: ShoppingCart },
+  { label: "Delivery",       icon: MapPin },
+  { label: "Place Order",    icon: ClipboardText },
+];
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState(null);
@@ -28,12 +34,17 @@ export default function CheckoutPage() {
   }, []);
 
   const handleAddAddress = async () => {
+    if (!newAddr.full_address || !newAddr.city) {
+      setError("Please fill in all address fields");
+      return;
+    }
     try {
       const res = await createAddress(newAddr);
       setAddresses([...addresses, res.data]);
       setSelectedAddress(res.data.id);
       setShowNewAddress(false);
       setNewAddr({ label: "Home", full_address: "", city: "" });
+      setError("");
     } catch {
       setError("Failed to add address");
     }
@@ -50,13 +61,18 @@ export default function CheckoutPage() {
       const res = await checkout(selectedAddress, notes);
       navigate(`/orders/${res.data.id}`);
     } catch (err) {
-      setError(err.response?.data?.error || "Checkout failed");
+      setError(err.response?.data?.error || "Checkout failed. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (loading) return <div className="page-loader">Loading...</div>;
+  if (loading) return (
+    <div className="page-loader">
+      <div className="loader-spinner" />
+      Preparing checkout…
+    </div>
+  );
 
   if (!cart || cart.items.length === 0) {
     return (
@@ -67,92 +83,217 @@ export default function CheckoutPage() {
     );
   }
 
+  const itemCount = cart.items.reduce((sum, i) => sum + i.quantity, 0);
+
   return (
     <div className="checkout-page">
-      <h1>Checkout</h1>
-
-      {error && <div className="alert alert-error">{error}</div>}
-
-      <div className="checkout-section">
-        <h2>Order Summary</h2>
-        {cart.items.map((item) => (
-          <div key={item.id} className="checkout-item">
-            <span>{item.item_name} × {item.quantity}</span>
-            <span>Rs {item.total_price}</span>
-          </div>
-        ))}
-        <div className="checkout-total">
-          <strong>Total: Rs {cart.total_price}</strong>
-        </div>
+      {/* Page header */}
+      <div style={{ marginBottom: 24 }}>
+        <h1>Checkout</h1>
+        <p style={{ color: "var(--txt-m)", fontSize: "0.875rem", marginTop: 4 }}>
+          Complete your order in seconds
+        </p>
       </div>
 
-      <div className="checkout-section">
-        <h2>Delivery Address</h2>
-        {addresses.length > 0 ? (
-          <div className="address-list">
-            {addresses.map((addr) => (
-              <label key={addr.id} className={`address-radio ${selectedAddress === addr.id ? "selected" : ""}`}>
-                <input
-                  type="radio"
-                  name="address"
-                  value={addr.id}
-                  checked={selectedAddress === addr.id}
-                  onChange={() => setSelectedAddress(addr.id)}
-                />
-                <div>
-                  <strong>{addr.label}</strong>
-                  <p>{addr.full_address}, {addr.city}</p>
+      {/* Step progress */}
+      <div className="checkout-progress" style={{ marginBottom: 28 }}>
+        {STEPS.map((step, i) => {
+          const Icon = step.icon;
+          const isDone = i < 1;
+          const isActive = i === 1;
+          return (
+            <div key={step.label} className="checkout-step-item" style={{ display: "flex", alignItems: "center" }}>
+              {i > 0 && (
+                <div className="checkout-step-connector" style={{
+                  flex: 1, height: 2, margin: "0 8px",
+                  background: isDone ? "var(--success)" : "var(--border)",
+                }} />
+              )}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <div className={`checkout-step-circle${isDone ? " done" : ""}${isActive ? " active" : ""}`}>
+                  {isDone ? <Check size={15} weight="bold" /> : <Icon size={15} weight={isActive ? "fill" : "regular"} />}
                 </div>
-              </label>
+                <span className={`checkout-step-label${isActive ? " active" : ""}`}
+                  style={{ color: isActive ? "var(--p)" : isDone ? "var(--success)" : "var(--txt-m)" }}>
+                  {step.label}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {error && <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>}
+
+      {/* Two-column layout */}
+      <div className="checkout-layout">
+        {/* Left: form */}
+        <div className="checkout-main">
+          {/* Delivery Address */}
+          <div className="checkout-section">
+            <h2>
+              <MapPin size={17} weight="duotone" style={{ color: "var(--p)" }} />
+              Delivery Address
+            </h2>
+
+            {addresses.length > 0 ? (
+              <div className="address-list">
+                {addresses.map((addr) => (
+                  <label key={addr.id} className={`address-radio ${selectedAddress === addr.id ? "selected" : ""}`}>
+                    <input
+                      type="radio"
+                      name="address"
+                      value={addr.id}
+                      checked={selectedAddress === addr.id}
+                      onChange={() => setSelectedAddress(addr.id)}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                        <strong>{addr.label}</strong>
+                        {selectedAddress === addr.id && (
+                          <span className="badge badge-success" style={{ fontSize: "0.6rem" }}>Selected</span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0 }}>{addr.full_address}, {addr.city}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            ) : (
+              <div style={{
+                padding: "16px", background: "var(--s2)", borderRadius: "var(--r-sm)",
+                textAlign: "center", color: "var(--txt-m)", fontSize: "0.875rem", marginBottom: 12
+              }}>
+                No saved addresses yet. Add one below.
+              </div>
+            )}
+
+            <button
+              className="btn btn-sm btn-outline"
+              onClick={() => setShowNewAddress(!showNewAddress)}
+              style={{ marginTop: addresses.length > 0 ? 8 : 0 }}
+            >
+              {showNewAddress ? "✕ Cancel" : "+ Add New Address"}
+            </button>
+
+            {showNewAddress && (
+              <div className="new-address-form" style={{ marginTop: 14 }}>
+                <div className="form-row">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Label</label>
+                    <select
+                      value={newAddr.label}
+                      onChange={(e) => setNewAddr({ ...newAddr, label: e.target.value })}
+                    >
+                      <option>Home</option>
+                      <option>Work</option>
+                      <option>Other</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>City</label>
+                    <input
+                      value={newAddr.city}
+                      onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })}
+                      placeholder="e.g. Kathmandu"
+                    />
+                  </div>
+                </div>
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label>Full Address</label>
+                  <textarea
+                    value={newAddr.full_address}
+                    onChange={(e) => setNewAddr({ ...newAddr, full_address: e.target.value })}
+                    placeholder="Street, landmark, area…"
+                    rows={2}
+                  />
+                </div>
+                <div className="form-actions" style={{ marginTop: 10 }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleAddAddress}>
+                    <Check size={14} weight="bold" /> Save Address
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Order Notes */}
+          <div className="checkout-section">
+            <h2>
+              <ClipboardText size={17} weight="duotone" style={{ color: "var(--p)" }} />
+              Special Instructions
+              <span style={{ fontSize: "0.75rem", fontWeight: 400, color: "var(--txt-m)", marginLeft: 6 }}>(Optional)</span>
+            </h2>
+            <textarea
+              className="form-input"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="E.g. No onions, extra spicy, leave at door…"
+              rows={3}
+              style={{ resize: "vertical" }}
+            />
+          </div>
+
+        </div>
+
+        {/* Right: sticky summary */}
+        <div className="checkout-aside">
+          <div className="checkout-summary-panel">
+            <h2>
+              Order Summary
+              <span style={{ marginLeft: "auto", fontSize: "0.75rem", fontWeight: 500, color: "var(--txt-m)" }}>
+                {itemCount} item{itemCount !== 1 ? "s" : ""}
+              </span>
+            </h2>
+
+            {cart.items.map((item) => (
+              <div key={item.id} className="checkout-summary-item">
+                <div>
+                  <span className="item-name">{item.item_name}</span>
+                  <span className="item-qty">×{item.quantity}</span>
+                </div>
+                <span style={{ fontWeight: 600, color: "var(--txt)", flexShrink: 0, marginLeft: 12 }}>
+                  Rs {item.total_price}
+                </span>
+              </div>
             ))}
+
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--txt-m)", marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border-l)" }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <Truck size={13} weight="fill" style={{ color: "var(--success)" }} />
+                Delivery
+              </span>
+              <span style={{ fontWeight: 700, color: "var(--success)" }}>FREE</span>
+            </div>
+
+            <div className="checkout-summary-total">
+              <span>Total</span>
+              <span>Rs {cart.total_price}</span>
+            </div>
+
+            <div className="checkout-cod-note">
+              <CurrencyDollar size={16} weight="fill" />
+              Cash on Delivery (COD)
+            </div>
+
+            <button
+              className="btn btn-primary btn-block btn-lg"
+              onClick={handleSubmit}
+              disabled={submitting}
+              style={{ marginTop: 4 }}
+            >
+              {submitting ? (
+                <><div className="loader-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Placing Order…</>
+              ) : (
+                "Place Order"
+              )}
+            </button>
+
+            <p style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--txt-m)", marginTop: 10 }}>
+              By placing the order you agree to our terms
+            </p>
           </div>
-        ) : (
-          <p className="text-muted">No addresses saved</p>
-        )}
-
-        <button className="btn btn-sm btn-outline" onClick={() => setShowNewAddress(!showNewAddress)}>
-          {showNewAddress ? "Cancel" : "+ Add New Address"}
-        </button>
-
-        {showNewAddress && (
-          <div className="new-address-form">
-            <div className="form-group">
-              <label>Label</label>
-              <select value={newAddr.label} onChange={(e) => setNewAddr({ ...newAddr, label: e.target.value })}>
-                <option>Home</option>
-                <option>Work</option>
-                <option>Other</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Full Address</label>
-              <textarea value={newAddr.full_address} onChange={(e) => setNewAddr({ ...newAddr, full_address: e.target.value })} required />
-            </div>
-            <div className="form-group">
-              <label>City</label>
-              <input value={newAddr.city} onChange={(e) => setNewAddr({ ...newAddr, city: e.target.value })} required />
-            </div>
-            <button className="btn btn-primary btn-sm" onClick={handleAddAddress}>Save Address</button>
-          </div>
-        )}
-      </div>
-
-      <div className="checkout-section">
-        <h2>Order Notes (Optional)</h2>
-        <textarea
-          className="form-input"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          placeholder="Any special instructions..."
-          rows={3}
-        />
-      </div>
-
-      <div className="checkout-action">
-        <p className="payment-note"><CurrencyDollar size={16} className="inline-icon" weight="fill" /> Payment: Cash on Delivery</p>
-        <button className="btn btn-primary btn-lg" onClick={handleSubmit} disabled={submitting}>
-          {submitting ? "Placing Order..." : "Place Order"}
-        </button>
+        </div>
       </div>
     </div>
   );

@@ -1,17 +1,52 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getOrders } from "../api/orders";
-import { ClipboardText, ArrowRight, ForkKnife } from "@phosphor-icons/react";
+import { ClipboardText, ArrowRight, ForkKnife, Clock, CurrencyDollar } from "@phosphor-icons/react";
 
 const STATUS_CONFIG = {
-  "Order Placed": { badge: "badge-warning",   label: "Placed" },
-  Preparing:      { badge: "badge-info",      label: "Preparing" },
-  "Out for Delivery": { badge: "badge-primary", label: "On the Way" },
-  Delivered:      { badge: "badge-success",   label: "Delivered" },
-  Cancelled:      { badge: "badge-danger",    label: "Cancelled" },
+  "Order Placed":     { badge: "badge-warning",  label: "Placed",      emoji: "📋", step: 1 },
+  Preparing:          { badge: "badge-info",     label: "Preparing",   emoji: "👨‍🍳", step: 2 },
+  "Out for Delivery": { badge: "badge-primary",  label: "On the Way",  emoji: "🛵", step: 3 },
+  Delivered:          { badge: "badge-success",  label: "Delivered",   emoji: "✅", step: 4 },
+  Cancelled:          { badge: "badge-danger",   label: "Cancelled",   emoji: "❌", step: 0 },
 };
 
 const FILTERS = ["All", "Order Placed", "Preparing", "Out for Delivery", "Delivered", "Cancelled"];
+
+function OrderProgressBar({ status }) {
+  const cfg = STATUS_CONFIG[status];
+  if (!cfg || cfg.step === 0) return null;
+  const pct = Math.round((cfg.step / 4) * 100);
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ height: 4, background: "var(--s2)", borderRadius: "var(--r-f)", overflow: "hidden" }}>
+        <div style={{
+          height: "100%", width: `${pct}%`,
+          background: status === "Delivered"
+            ? "var(--success)"
+            : "linear-gradient(90deg,var(--p),var(--p-dark))",
+          borderRadius: "var(--r-f)",
+          transition: "width 0.6s var(--ease)",
+        }} />
+      </div>
+    </div>
+  );
+}
+
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+
+  const isToday = d.toDateString() === today.toDateString();
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+
+  const time = d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  if (isToday) return `Today at ${time}`;
+  if (isYesterday) return `Yesterday at ${time}`;
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + ` · ${time}`;
+}
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -39,12 +74,12 @@ export default function OrdersPage() {
   if (orders.length === 0) {
     return (
       <div className="empty-page">
-        <div className="empty-icon" style={{ width: 80, height: 80, margin: "0 auto 20px" }}>
-          <ClipboardText size={36} style={{ opacity: 0.35, color: "var(--text-muted)" }} />
+        <div className="empty-icon" style={{ width: 88, height: 88, margin: "0 auto 24px", background: "var(--p-light)" }}>
+          <ClipboardText size={38} style={{ color: "var(--p)", opacity: 0.7 }} />
         </div>
         <h2>No orders yet</h2>
         <p>Place your first order from our menu and it'll appear here</p>
-        <Link to="/menu" className="btn btn-primary btn-lg">
+        <Link to="/menu" className="btn btn-primary btn-lg" style={{ marginTop: 4 }}>
           <ForkKnife size={17} /> Browse Menu
         </Link>
       </div>
@@ -53,11 +88,17 @@ export default function OrdersPage() {
 
   return (
     <div className="orders-page">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
-        <h1 style={{ margin: 0 }}>My Orders</h1>
-        <span style={{ fontSize: "0.875rem", color: "var(--text-muted)", fontWeight: 500 }}>
-          {orders.length} total orders
-        </span>
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>My Orders</h1>
+          <p style={{ color: "var(--txt-m)", fontSize: "0.875rem", marginTop: 3 }}>
+            {orders.length} total order{orders.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <Link to="/menu" className="btn btn-outline btn-sm">
+          <ForkKnife size={14} /> Order Again
+        </Link>
       </div>
 
       {/* Filter tabs */}
@@ -70,11 +111,12 @@ export default function OrdersPage() {
               className={`orders-filter-tab ${filter === f ? "active" : ""}`}
               onClick={() => setFilter(f)}
             >
-              {f}
+              {STATUS_CONFIG[f]?.emoji && <span>{STATUS_CONFIG[f].emoji}</span>}
+              {f === "All" ? "All Orders" : STATUS_CONFIG[f]?.label || f}
               {count > 0 && (
                 <span style={{
-                  background: filter === f ? "rgba(255,255,255,0.3)" : "var(--surface-3)",
-                  borderRadius: "var(--r-full)",
+                  background: filter === f ? "rgba(255,255,255,0.3)" : "var(--s2)",
+                  borderRadius: "var(--r-f)",
                   padding: "1px 6px",
                   fontSize: "0.6875rem",
                   fontWeight: 700,
@@ -94,32 +136,51 @@ export default function OrdersPage() {
       ) : (
         <div className="order-list">
           {filtered.map((order) => {
-            const cfg = STATUS_CONFIG[order.status] || { badge: "badge-secondary", label: order.status };
+            const cfg = STATUS_CONFIG[order.status] || { badge: "badge-secondary", label: order.status, emoji: "📦", step: 0 };
+            const itemNames = order.items?.map((i) => i.item_name).join(", ") || "";
+            const isActive = order.status !== "Delivered" && order.status !== "Cancelled";
+
             return (
               <Link to={`/orders/${order.id}`} key={order.id} className="order-card">
+                {/* Header row */}
                 <div className="order-card-header">
-                  <span className="order-id">Order #{order.id}</span>
-                  <span className={`badge ${cfg.badge}`}>{cfg.label}</span>
+                  <div>
+                    <span className="order-id">Order #{order.id}</span>
+                    {itemNames && (
+                      <p className="order-items-preview">{itemNames}</p>
+                    )}
+                  </div>
+                  <span className={`badge ${cfg.badge}`} style={{ flexShrink: 0 }}>
+                    {cfg.emoji} {cfg.label}
+                  </span>
                 </div>
 
-                <div className="order-card-body">
-                  <span>{new Date(order.order_date).toLocaleDateString("en-US", {
-                    weekday: "short", month: "short", day: "numeric"
-                  })}</span>
-                  <span style={{ color: "var(--text-muted)" }}>
-                    {new Date(order.order_date).toLocaleTimeString("en-US", {
-                      hour: "2-digit", minute: "2-digit"
-                    })}
+                {/* Meta row */}
+                <div className="order-card-meta">
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <Clock size={13} />
+                    {formatDate(order.order_date)}
                   </span>
-                  <span style={{ fontWeight: 600, color: "var(--text)" }}>
+                  <span className="order-meta-sep">●</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <ForkKnife size={13} />
                     {order.items?.length || 0} item{(order.items?.length || 0) !== 1 ? "s" : ""}
                   </span>
+                  <span className="order-meta-sep">●</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <CurrencyDollar size={13} />
+                    Rs {order.total_amount}
+                  </span>
                 </div>
 
-                <div className="order-card-footer">
+                {/* Progress bar for active orders */}
+                <OrderProgressBar status={order.status} />
+
+                {/* Footer */}
+                <div className="order-card-footer" style={{ marginTop: 10 }}>
                   <span className="order-amount-large">Rs {order.total_amount}</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: "4px", fontWeight: 500 }}>
-                    Track order <ArrowRight size={13} weight="bold" />
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontWeight: 600, color: isActive ? "var(--p)" : "var(--txt-m)" }}>
+                    {isActive ? "Track order" : "View details"} <ArrowRight size={13} weight="bold" />
                   </span>
                 </div>
               </Link>

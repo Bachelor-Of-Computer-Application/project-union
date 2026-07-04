@@ -5,8 +5,23 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import {
   Star, MagnifyingGlass, ShoppingCart, ForkKnife,
-  SlidersHorizontal, X,
+  X, Clock, Truck, CheckCircle,
 } from "@phosphor-icons/react";
+
+const CATEGORY_EMOJIS = {
+  "Biryani": "🍛", "Pizza": "🍕", "Burger": "🍔", "Noodles": "🍜",
+  "Chicken": "🍗", "Drinks": "🥤", "Beverages": "🥤", "Snacks": "🍟",
+  "Desserts": "🍮", "Rice": "🍚", "Bread": "🫓", "Salad": "🥗",
+  "Soup": "🍲", "Seafood": "🦐", "Vegetarian": "🥦", "Mutton": "🍖",
+  "Buff": "🥩", "Momos": "🥟", "Sandwich": "🥪",
+};
+
+function getCatEmoji(name = "") {
+  for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
+    if (name.toLowerCase().includes(key.toLowerCase())) return emoji;
+  }
+  return "🍽️";
+}
 
 export default function MenuPage() {
   const [categories, setCategories] = useState([]);
@@ -14,7 +29,8 @@ export default function MenuPage() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [toast, setToast] = useState(null);
-  const { isAuthenticated } = useAuth();
+  const [addingId, setAddingId] = useState(null);
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -35,11 +51,14 @@ export default function MenuPage() {
       navigate("/login");
       return;
     }
+    setAddingId(item.id);
     try {
       await addToCart(item.id);
       showToast(`${item.name} added to cart!`);
     } catch {
       showToast("Could not add item. Please try again.", "error");
+    } finally {
+      setAddingId(null);
     }
   };
 
@@ -69,27 +88,43 @@ export default function MenuPage() {
   return (
     <div className="menu-page">
       {toast && (
-        <div className={`alert alert-${toast.type} toast`}>{toast.msg}</div>
+        <div className={`alert alert-${toast.type} toast`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {toast.type === "success" ? <CheckCircle size={16} weight="fill" /> : null}
+          {toast.msg}
+        </div>
       )}
 
-      {/* Page header */}
-      <div className="menu-page-header">
-        <div>
-          <h1>Menu</h1>
-          <p style={{ color: "var(--txt-m)", fontSize: "0.9rem", marginTop: 4 }}>
-            {totalItems} dishes across {categories.length} categories
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span className="badge badge-orange">
-            <ForkKnife size={12} weight="fill" /> Fresh Menu
-          </span>
+      {/* Hero Banner */}
+      <div className="menu-hero">
+        <div className="menu-hero-inner">
+          <div className="menu-hero-text">
+            <h1>
+              {isAuthenticated
+                ? `Hey ${user?.username}, what are you craving? 👋`
+                : "Discover Something Delicious"}
+            </h1>
+            <p>Fresh ingredients, bold flavors — ready in 25–35 minutes</p>
+          </div>
+          <div className="menu-hero-stats">
+            <div className="menu-hero-stat">
+              <strong>{totalItems}</strong>
+              <span>Dishes</span>
+            </div>
+            <div className="menu-hero-stat">
+              <strong>{categories.length}</strong>
+              <span>Categories</span>
+            </div>
+            <div className="menu-hero-stat">
+              <strong>Free</strong>
+              <span>Delivery</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Toolbar */}
+      {/* Search + toolbar */}
       <div className="menu-toolbar">
-        <div className="menu-search-bar">
+        <div className="menu-search-bar" style={{ maxWidth: 520, flex: 1 }}>
           <MagnifyingGlass size={15} color="var(--txt-m)" />
           <input
             placeholder="Search dishes, ingredients…"
@@ -105,15 +140,38 @@ export default function MenuPage() {
             </button>
           )}
         </div>
-
-        <button className="btn btn-secondary btn-sm">
-          <SlidersHorizontal size={15} /> Filter
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "0.8125rem", color: "var(--txt-m)", flexShrink: 0 }}>
+          <Clock size={14} />
+          25–35 min delivery
+        </div>
       </div>
 
-      {/* ERP two-panel layout */}
+      {/* Horizontal category pills */}
+      <div className="menu-cats-scroll-wrap">
+        <div className="menu-cats-scroll">
+          <button
+            className={`menu-cat-pill${activeCategory === "all" ? " active" : ""}`}
+            onClick={() => setActiveCategory("all")}
+          >
+            🍽️ All Items
+            <span className="menu-cat-pill-count">{totalItems}</span>
+          </button>
+          {categories.map((cat) => (
+            <button
+              key={cat.id}
+              className={`menu-cat-pill${activeCategory === cat.id ? " active" : ""}`}
+              onClick={() => setActiveCategory(activeCategory === cat.id ? "all" : cat.id)}
+            >
+              {getCatEmoji(cat.name)} {cat.name}
+              <span className="menu-cat-pill-count">{cat.items.length}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ERP two-panel layout for wider screens */}
       <div className="menu-layout">
-        {/* Category sidebar */}
+        {/* Category sidebar (desktop) */}
         <div className="menu-cat-panel">
           <div className="menu-cat-panel-header">Categories</div>
           <button
@@ -129,6 +187,7 @@ export default function MenuPage() {
               className={`menu-cat-item${activeCategory === cat.id ? " active" : ""}`}
               onClick={() => setActiveCategory(activeCategory === cat.id ? "all" : cat.id)}
             >
+              <span style={{ marginRight: 6 }}>{getCatEmoji(cat.name)}</span>
               {cat.name}
               <span className="menu-cat-count">{cat.items.length}</span>
             </button>
@@ -155,67 +214,86 @@ export default function MenuPage() {
             filteredCategories.map((cat) => (
               <section key={cat.id} className="menu-category" id={`cat-${cat.id}`}>
                 <h2 className="category-title">
-                  <ForkKnife size={16} weight="duotone" style={{ color: "var(--p)" }} />
+                  <span style={{ fontSize: "1.1rem" }}>{getCatEmoji(cat.name)}</span>
                   {cat.name}
                   <span style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--txt-m)", marginLeft: 4 }}>
                     ({cat.items.length})
                   </span>
                 </h2>
                 <div className="menu-grid">
-                  {cat.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="menu-card"
-                      style={!item.is_available ? { opacity: 0.6 } : undefined}
-                    >
-                      {item.image ? (
-                        <img
-                          className="menu-card-image"
-                          src={item.image}
-                          alt={item.name}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="menu-card-image-placeholder">
-                          <ForkKnife size={32} style={{ opacity: 0.25 }} />
-                          <span style={{ fontSize: "0.75rem" }}>No photo yet</span>
-                        </div>
-                      )}
+                  {cat.items.map((item) => {
+                    const isPopular = item.rating >= 4.2;
+                    const isNew = !item.rating || item.rating === 0;
+                    const isAdding = addingId === item.id;
 
-                      <div className="menu-card-body">
-                        <h3>{item.name}</h3>
-                        {!item.is_available && (
-                          <span className="badge badge-secondary" style={{ marginBottom: 6, fontSize: "0.6875rem" }}>
-                            Unavailable
-                          </span>
-                        )}
-                        {item.description && (
-                          <p className="menu-desc">{item.description}</p>
-                        )}
-                        <div className="menu-card-footer">
-                          <span className="menu-price">Rs {item.price}</span>
-                          {item.rating > 0 && (
-                            <span className="menu-rating">
-                              <Star size={12} weight="fill" className="star-icon" />
-                              {item.rating}
+                    return (
+                      <div
+                        key={item.id}
+                        className="menu-card"
+                        style={!item.is_available ? { opacity: 0.62 } : undefined}
+                      >
+                        <div className="menu-card-img-wrap">
+                          {item.image ? (
+                            <img
+                              className="menu-card-image"
+                              src={item.image}
+                              alt={item.name}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <div className="menu-card-image-placeholder">
+                              <ForkKnife size={32} style={{ opacity: 0.2 }} />
+                              <span style={{ fontSize: "0.75rem" }}>No photo yet</span>
+                            </div>
+                          )}
+                          {isPopular && item.is_available && (
+                            <span className="menu-card-badge">⭐ Popular</span>
+                          )}
+                          {isNew && item.is_available && (
+                            <span className="menu-card-badge new">New</span>
+                          )}
+                        </div>
+
+                        <div className="menu-card-body">
+                          <h3>{item.name}</h3>
+                          {!item.is_available && (
+                            <span className="badge badge-secondary" style={{ marginBottom: 6, fontSize: "0.6875rem" }}>
+                              Unavailable
                             </span>
                           )}
-                        </div>
-                        <button
-                          className={`btn btn-sm ${item.is_available ? "btn-primary" : "btn-secondary"}`}
-                          onClick={() => handleAddToCart(item)}
-                          disabled={!item.is_available}
-                          style={{ width: "100%", marginTop: 14 }}
-                        >
-                          {item.is_available ? (
-                            <><ShoppingCart size={15} weight="bold" /> Add to Cart</>
-                          ) : (
-                            "Currently Unavailable"
+                          {item.description && (
+                            <p className="menu-desc">{item.description}</p>
                           )}
-                        </button>
+                          <div className="menu-card-footer">
+                            <span className="menu-price">Rs {item.price}</span>
+                            {item.rating > 0 && (
+                              <span className="menu-rating">
+                                <Star size={12} weight="fill" className="star-icon" />
+                                {item.rating}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            className={`btn btn-sm ${item.is_available ? "btn-primary" : "btn-secondary"}`}
+                            onClick={() => handleAddToCart(item)}
+                            disabled={!item.is_available || isAdding}
+                            style={{ width: "100%", marginTop: 14 }}
+                          >
+                            {isAdding ? (
+                              <>
+                                <div className="loader-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                                Adding…
+                              </>
+                            ) : item.is_available ? (
+                              <><ShoppingCart size={15} weight="bold" /> Add to Cart</>
+                            ) : (
+                              "Currently Unavailable"
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             ))

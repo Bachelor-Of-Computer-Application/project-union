@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { getCart, updateCartItem, removeCartItem } from "../api/orders";
-import { X, Minus, Plus, ShoppingCart, ArrowRight, ForkKnife } from "@phosphor-icons/react";
+import { X, Minus, Plus, ShoppingCart, ArrowRight, ForkKnife, Truck, Clock } from "@phosphor-icons/react";
 
 export default function CartPage() {
   const [cart, setCart] = useState(null);
@@ -44,49 +44,71 @@ export default function CartPage() {
   if (!cart || cart.items.length === 0) {
     return (
       <div className="empty-page">
-        <div className="empty-icon" style={{ width: 80, height: 80, margin: "0 auto 20px" }}>
-          <ShoppingCart size={36} style={{ opacity: 0.35, color: "var(--text-muted)" }} />
+        <div className="empty-icon" style={{ width: 88, height: 88, margin: "0 auto 24px", background: "var(--p-light)" }}>
+          <ShoppingCart size={38} style={{ color: "var(--p)", opacity: 0.7 }} />
         </div>
         <h2>Your cart is empty</h2>
         <p>Add some delicious items from our menu to get started</p>
-        <Link to="/menu" className="btn btn-primary btn-lg">
+        <Link to="/menu" className="btn btn-primary btn-lg" style={{ marginTop: 4 }}>
           <ForkKnife size={17} /> Browse Menu
         </Link>
       </div>
     );
   }
 
-  const deliveryFee = 0;
   const subtotal = cart.total_price;
-  const total = subtotal + deliveryFee;
+  const total = subtotal;
+  const itemCount = cart.items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
     <div className="cart-page">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-        <h1 style={{ margin: 0 }}>Your Cart</h1>
-        <span style={{ fontSize: "0.875rem", color: "var(--text-muted)", fontWeight: 500 }}>
-          {cart.items.length} item{cart.items.length !== 1 ? "s" : ""}
+      {/* Page header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Your Cart</h1>
+          <p style={{ color: "var(--txt-m)", fontSize: "0.875rem", marginTop: 3 }}>
+            {cart.items.length} item{cart.items.length !== 1 ? "s" : ""} · {itemCount} total qty
+          </p>
+        </div>
+        <Link to="/menu" className="btn btn-outline btn-sm">
+          <ForkKnife size={14} /> Add more
+        </Link>
+      </div>
+
+      {/* Free delivery banner */}
+      <div className="cart-delivery-bar">
+        <Truck size={18} weight="fill" />
+        <span>Free delivery on this order — enjoy!</span>
+        <span style={{ marginLeft: "auto", fontSize: "0.75rem", opacity: 0.8, fontWeight: 500 }}>
+          Estimated: 25–35 min
         </span>
       </div>
 
       <div className="cart-layout">
-        {/* Items */}
+        {/* Cart items */}
         <div>
           <div className="cart-items">
             {cart.items.map((item) => (
               <div key={item.id} className="cart-item">
-                <div className="cart-item-img" style={{
-                  background: "linear-gradient(135deg, var(--surface-3), var(--primary-light))",
-                  display: "flex", alignItems: "center", justifyContent: "center"
-                }}>
-                  <ForkKnife size={24} style={{ opacity: 0.25, color: "var(--primary)" }} />
-                </div>
+                {/* Item image */}
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt={item.item_name}
+                    className="cart-item-img-real"
+                  />
+                ) : (
+                  <div className="cart-item-img-placeholder">
+                    <ForkKnife size={22} weight="duotone" />
+                  </div>
+                )}
 
                 <div className="cart-item-info">
                   <h3>{item.item_name}</h3>
                   <p className="cart-item-price">Rs {item.item_price} each</p>
                 </div>
 
+                {/* Quantity controls */}
                 <div className="cart-item-controls">
                   <button className="qty-btn" onClick={() => handleQuantity(item, -1)}>
                     <Minus size={13} weight="bold" />
@@ -110,31 +132,39 @@ export default function CartPage() {
             ))}
           </div>
 
-          <div style={{ marginTop: "16px" }}>
-            <Link to="/menu" className="btn btn-outline btn-sm">
-              <ForkKnife size={14} /> Add more items
-            </Link>
+          {/* Delivery estimate */}
+          <div className="cart-estimate">
+            <Clock size={15} />
+            Order now and receive in approximately <strong style={{ color: "var(--txt)", marginLeft: 4 }}>25–35 minutes</strong>
           </div>
         </div>
 
-        {/* Summary Panel */}
+        {/* Order Summary Panel */}
         <div className="cart-summary">
           <h2>Order Summary</h2>
 
           {cart.items.map((item) => (
             <div key={item.id} className="cart-summary-row">
-              <span>{item.item_name} × {item.quantity}</span>
-              <span>Rs {item.total_price}</span>
+              <span style={{ color: "var(--txt-2)" }}>
+                {item.item_name}
+                <span style={{ color: "var(--txt-m)", fontSize: "0.75rem", marginLeft: 4 }}>
+                  ×{item.quantity}
+                </span>
+              </span>
+              <span style={{ fontWeight: 600, color: "var(--txt)" }}>Rs {item.total_price}</span>
             </div>
           ))}
 
-          <div className="cart-summary-row" style={{ marginTop: "8px", paddingTop: "8px", borderTop: "1px solid var(--border)" }}>
+          <div className="cart-summary-row" style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--border)" }}>
             <span>Subtotal</span>
             <span>Rs {subtotal}</span>
           </div>
           <div className="cart-summary-row">
-            <span>Delivery Fee</span>
-            <span style={{ color: "var(--success)", fontWeight: 600 }}>FREE</span>
+            <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+              <Truck size={13} weight="fill" style={{ color: "var(--success)" }} />
+              Delivery Fee
+            </span>
+            <span style={{ color: "var(--success)", fontWeight: 700 }}>FREE</span>
           </div>
 
           <div className="cart-summary-row total">
@@ -142,8 +172,16 @@ export default function CartPage() {
             <span>Rs {total}</span>
           </div>
 
-          <div style={{ marginTop: "6px", padding: "12px", background: "var(--primary-light)", borderRadius: "var(--r-sm)", fontSize: "0.8125rem", color: "var(--primary-dark)", fontWeight: 500 }}>
-            Payment: Cash on Delivery (COD)
+          {/* COD note */}
+          <div style={{
+            marginTop: "12px", padding: "12px 14px",
+            background: "var(--p-light)", borderRadius: "var(--r-sm)",
+            fontSize: "0.8125rem", color: "var(--p-dark)", fontWeight: 500,
+            display: "flex", alignItems: "center", gap: 8,
+            border: "1px solid var(--p-mid)"
+          }}>
+            <span style={{ fontSize: "1rem" }}>💵</span>
+            Payment: Cash on Delivery
           </div>
 
           <button
@@ -153,6 +191,10 @@ export default function CartPage() {
           >
             Proceed to Checkout <ArrowRight size={16} weight="bold" />
           </button>
+
+          <p style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--txt-m)", marginTop: 10 }}>
+            You can review your address on the next step
+          </p>
         </div>
       </div>
     </div>
