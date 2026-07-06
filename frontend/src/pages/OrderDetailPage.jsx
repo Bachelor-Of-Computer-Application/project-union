@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { getOrderDetail } from "../api/orders";
-import { ArrowLeft, Check, Clock, Fire, Truck, CheckCircle, MapPin, CreditCard, Package, XCircle } from "@phosphor-icons/react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { getOrderDetail, cancelOrder } from "../api/orders";
+import {
+  ArrowLeft, Check, Clock, Fire, Truck, CheckCircle,
+  MapPin, CreditCard, Package, XCircle, Warning,
+} from "@phosphor-icons/react";
 
 const STEPS = [
   { key: "Order Placed",     icon: Package,      label: "Order Placed",      sub: "We received your order" },
@@ -27,19 +30,41 @@ const STATUS_MESSAGES = {
 
 export default function OrderDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
+  const [showConfirm, setShowConfirm] = useState(false);
 
-  useEffect(() => {
+  const fetchOrder = () =>
     getOrderDetail(id)
       .then((res) => setOrder(res.data))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [id]);
+
+  useEffect(() => { fetchOrder(); }, [id]);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    setCancelError("");
+    try {
+      const res = await cancelOrder(id);
+      setOrder(res.data);
+      setShowConfirm(false);
+    } catch (err) {
+      setCancelError(
+        err.response?.data?.error || "Could not cancel this order. Please try again."
+      );
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const currentStep = STEPS.findIndex((s) => s.key === order?.status);
   const isCancelled = order?.status === "Cancelled";
   const isDelivered = order?.status === "Delivered";
+  const canCancel   = order?.status === "Order Placed";
   const progressPct = !isCancelled && currentStep >= 0
     ? Math.round((currentStep / (STEPS.length - 1)) * 100)
     : 0;
@@ -71,10 +96,16 @@ export default function OrderDetailPage() {
       {/* Header */}
       <div className="order-header">
         <h1>Order #{order.id}</h1>
-        <span className={`badge ${STATUS_BADGE[order.status] || "badge-secondary"}`} style={{ fontSize: "0.75rem", padding: "5px 14px" }}>
+        <span
+          className={`badge ${STATUS_BADGE[order.status] || "badge-secondary"}`}
+          style={{ fontSize: "0.75rem", padding: "5px 14px" }}
+        >
           {order.status}
         </span>
-        <span style={{ fontSize: "0.875rem", color: "var(--txt-m)", marginLeft: "auto", display: "flex", alignItems: "center", gap: 5 }}>
+        <span style={{
+          fontSize: "0.875rem", color: "var(--txt-m)", marginLeft: "auto",
+          display: "flex", alignItems: "center", gap: 5,
+        }}>
           <Clock size={14} />
           {new Date(order.order_date).toLocaleString("en-US", {
             weekday: "short", month: "short", day: "numeric",
@@ -83,7 +114,7 @@ export default function OrderDetailPage() {
         </span>
       </div>
 
-      {/* Status message */}
+      {/* Status message banner */}
       {STATUS_MESSAGES[order.status] && (
         <div style={{
           background: isDelivered ? "var(--success-l)" : "var(--p-light)",
@@ -101,15 +132,69 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Cancelled alert */}
+      {/* Cancelled banner */}
       {isCancelled && (
-        <div className="alert alert-error" style={{ marginBottom: "24px", display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="alert alert-error" style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 10 }}>
           <XCircle size={18} weight="fill" />
           This order has been cancelled.
         </div>
       )}
 
-      {/* Tracking Timeline */}
+      {/* Cancel action — only shown for "Order Placed" */}
+      {canCancel && (
+        <div style={{
+          background: "var(--warning-l)", border: "1.5px solid var(--warning-b)",
+          borderRadius: "var(--r-sm)", padding: "14px 18px",
+          marginBottom: 20, display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 16, flexWrap: "wrap",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Warning size={18} weight="fill" style={{ color: "var(--warning)", flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--txt)" }}>
+                Need to cancel?
+              </div>
+              <div style={{ fontSize: "0.8125rem", color: "var(--txt-2)", marginTop: 2 }}>
+                You can cancel this order while it's still waiting to be prepared.
+              </div>
+            </div>
+          </div>
+          {!showConfirm ? (
+            <button
+              className="btn btn-danger btn-sm"
+              onClick={() => setShowConfirm(true)}
+            >
+              <XCircle size={14} weight="fill" /> Cancel Order
+            </button>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--txt)" }}>
+                Are you sure?
+              </span>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={handleCancel}
+                disabled={cancelling}
+              >
+                {cancelling ? "Cancelling…" : "Yes, cancel it"}
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => { setShowConfirm(false); setCancelError(""); }}
+                disabled={cancelling}
+              >
+                Keep order
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {cancelError && (
+        <div className="alert alert-error" style={{ marginBottom: 16 }}>{cancelError}</div>
+      )}
+
+      {/* Tracking timeline */}
       {!isCancelled && (
         <div className="order-tracking">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24 }}>
@@ -123,7 +208,7 @@ export default function OrderDetailPage() {
           </div>
 
           {/* Progress bar */}
-          <div style={{ position: "relative", marginBottom: 32 }}>
+          <div style={{ marginBottom: 32 }}>
             <div style={{ height: 4, background: "var(--s2)", borderRadius: "var(--r-f)", overflow: "hidden" }}>
               <div style={{
                 height: "100%", width: `${progressPct}%`,
@@ -136,7 +221,7 @@ export default function OrderDetailPage() {
             </div>
           </div>
 
-          <div className="tracking-steps" style={{ position: "relative" }}>
+          <div className="tracking-steps">
             {STEPS.map((step, i) => {
               const Icon = step.icon;
               const done = i < currentStep;
@@ -146,8 +231,7 @@ export default function OrderDetailPage() {
                   <div className="step-indicator">
                     {done
                       ? <Check size={16} weight="bold" />
-                      : <Icon size={16} weight={active ? "fill" : "regular"} />
-                    }
+                      : <Icon size={16} weight={active ? "fill" : "regular"} />}
                   </div>
                   <div>
                     <div className="step-label" style={{ fontWeight: 600, fontSize: "0.8125rem" }}>
@@ -164,7 +248,7 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Info Grid */}
+      {/* Info grid */}
       <div className="order-info-grid">
         <div className="info-card">
           <h3>
@@ -213,7 +297,7 @@ export default function OrderDetailPage() {
         </div>
       )}
 
-      {/* Order Items Table */}
+      {/* Items table */}
       <div className="section">
         <div className="section-header">
           <h2>Items Ordered</h2>
@@ -237,21 +321,26 @@ export default function OrderDetailPage() {
                 <tr key={item.id}>
                   <td style={{ fontWeight: 600, color: "var(--txt)" }}>{item.item_name}</td>
                   <td style={{ color: "var(--txt-2)" }}>Rs {item.item_price}</td>
-                  <td>
-                    <span className="badge badge-secondary">×{item.quantity}</span>
-                  </td>
+                  <td><span className="badge badge-secondary">×{item.quantity}</span></td>
                   <td style={{ textAlign: "right", fontWeight: 700, color: "var(--txt)" }}>
-                    Rs {item.item_price * item.quantity}
+                    Rs {(parseFloat(item.item_price) * item.quantity).toFixed(2)}
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr style={{ borderTop: "2px solid var(--border)" }}>
-                <td colSpan={3} style={{ textAlign: "right", fontWeight: 700, fontSize: "1rem", color: "var(--txt)", padding: "16px" }}>
+                <td colSpan={3} style={{
+                  textAlign: "right", fontWeight: 700,
+                  fontSize: "1rem", color: "var(--txt)", padding: "16px",
+                }}>
                   Order Total
                 </td>
-                <td style={{ textAlign: "right", fontWeight: 800, fontSize: "1.125rem", color: "var(--p-dark)", padding: "16px", fontFamily: "var(--fh)" }}>
+                <td style={{
+                  textAlign: "right", fontWeight: 800,
+                  fontSize: "1.125rem", color: "var(--p-dark)",
+                  padding: "16px", fontFamily: "var(--fh)",
+                }}>
                   Rs {order.total_amount}
                 </td>
               </tr>

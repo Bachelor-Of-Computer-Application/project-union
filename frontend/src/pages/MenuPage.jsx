@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { addToCart } from "../api/orders";
 import { getMenuCategories } from "../api/menu";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Star, MagnifyingGlass, ShoppingCart, ForkKnife,
-  X, Clock, Truck, CheckCircle,
+  X, Clock, CheckCircle,
 } from "@phosphor-icons/react";
 
 const CATEGORY_EMOJIS = {
@@ -32,6 +32,17 @@ export default function MenuPage() {
   const [addingId, setAddingId] = useState(null);
   const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Populate search from URL query param (set by TopBar search)
+  useEffect(() => {
+    const q = searchParams.get("search");
+    if (q) {
+      setSearch(q);
+      // Clear the query param after picking it up so the URL stays clean
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     getMenuCategories()

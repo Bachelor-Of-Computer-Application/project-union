@@ -1,13 +1,19 @@
 import axios from "axios";
 
-const API_BASE = "http://localhost:8000/api";
-export const MEDIA_BASE = "http://localhost:8000";
+// API base URL is set via the VITE_API_BASE environment variable.
+// In local dev this defaults to http://localhost:8000/api.
+// Set it in frontend/.env for production.
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api";
+
+// Used for constructing media/image URLs (e.g. menu item images)
+export const MEDIA_BASE = import.meta.env.VITE_MEDIA_BASE ?? "http://localhost:8000";
 
 const client = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
 });
 
+// Attach the JWT access token to every outgoing request
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem("access_token");
   if (token) {
@@ -16,27 +22,41 @@ client.interceptors.request.use((config) => {
   return config;
 });
 
+// On 401, attempt a silent token refresh once, then redirect to /login
 client.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
+
+      const refresh = localStorage.getItem("refresh_token");
+      if (!refresh) {
+        redirectToLogin();
+        return Promise.reject(error);
+      }
+
       try {
-        const refresh = localStorage.getItem("refresh_token");
-        if (!refresh) throw new Error("No refresh token");
         const res = await axios.post(`${API_BASE}/token/refresh/`, { refresh });
-        localStorage.setItem("access_token", res.data.access);
-        originalRequest.headers.Authorization = `Bearer ${res.data.access}`;
+        const newAccess = res.data.access;
+        localStorage.setItem("access_token", newAccess);
+        originalRequest.headers.Authorization = `Bearer ${newAccess}`;
         return client(originalRequest);
       } catch {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
+        redirectToLogin();
+        return Promise.reject(error);
       }
     }
+
     return Promise.reject(error);
   }
 );
+
+function redirectToLogin() {
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("refresh_token");
+  window.location.href = "/login";
+}
 
 export default client;

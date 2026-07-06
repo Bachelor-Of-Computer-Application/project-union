@@ -1,65 +1,118 @@
 from collections import defaultdict
-from django.db.models import F
+
+from django.db.models import F, Q
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
+
 from rest_framework import generics, status
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Order, Cart, CartItem
-from .serializers import (
-    OrderSerializer, OrderCreateSerializer, OrderStatusUpdateSerializer,
-    CartSerializer, CartItemWriteSerializer,
-)
-from accounts.models import Customer, Address
-from menu.models import MenuItem
+from accounts.models import Address, Customer
+from config.permissions import IsAdminUser
+from inventory.models import InventoryItem
+from menu.models import MenuItem, MenuItemRecipe
 
+from .models import Cart, CartItem, Order, OrderItem
+from .serializers import (
+    CartItemWriteSerializer,
+    CartSerializer,
+    OrderCreateSerializer,
+    OrderSerializer,
+    OrderStatusUpdateSerializer,
+)
+
+
+# ──────────────────────────────────────────────
+# Helpers
+# ──────────────────────────────────────────────
+
+def get_customer_or_404(user):
+    """
+    Returns the Customer for a given User.
+    Superusers created via createsuperuser won't have a Customer profile,
+    so all views that need one call this instead of bare .get().
+    """
+    return get_object_or_404(Customer, user=user)
+
+
+def update_inventory_for_order(order, *, deduct: bool):
+    """
+    Adjust inventory quantities based on an order's recipe links.
+
+    deduct=True  → subtract stock   (order → Preparing)
+    deduct=False → restore stock    (Preparing order → Cancelled)
+
+    Re-evaluates availability on every affected MenuItem afterwards.
+    """
+    affected_menu_items = set()
+
+    for order_item in order.items.select_related("menu_item").all():
+        recipes = (
+            MenuItemRecipe.objects
+            .filter(menu_item=order_item.menu_item)
+            .select_related("inventory_item")
+        )
+        for recipe in recipes:
+            inv = recipe.inventory_item
+            needed = recipe.quantity_required * order_item.quantity
+            inv.quantity = max(inv.quantity - needed, 0) if deduct else inv.quantity + needed
+            inv.save(update_fields=["quantity"])
+            affected_menu_items.add(order_item.menu_item)
+
+    for menu_item in affected_menu_items:
+        menu_item.auto_availability()
+
+
+# ──────────────────────────────────────────────
+# Cart views
+# ──────────────────────────────────────────────
 
 class CartDetailAPIView(APIView):
+    """GET — Returns the current user's cart (creates one if needed)."""
+
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        customer = Customer.objects.get(user=request.user)
+        customer = get_customer_or_404(request.user)
         cart, _ = Cart.objects.get_or_create(customer=customer)
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        return Response(CartSerializer(cart).data)
 
 
 class CartAddItemAPIView(APIView):
+    """POST — Add an item to the cart; increments quantity if already present."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        customer = Customer.objects.get(user=request.user)
+        customer = get_customer_or_404(request.user)
         cart, _ = Cart.objects.get_or_create(customer=customer)
-        menu_item_id = request.data.get("menu_item")
-        quantity = int(request.data.get("quantity", 1))
 
-        try:
-            menu_item = MenuItem.objects.get(id=menu_item_id, is_available=True)
-        except MenuItem.DoesNotExist:
-            return Response({"error": "Menu item not found or unavailable"}, status=404)
+        menu_item_id = request.data.get("menu_item")
+        quantity = max(int(request.data.get("quantity", 1)), 1)
+        menu_item = get_object_or_404(MenuItem, id=menu_item_id, is_available=True)
 
         cart_item, created = CartItem.objects.get_or_create(
-            cart=cart, menu_item=menu_item,
+            cart=cart,
+            menu_item=menu_item,
             defaults={"quantity": quantity},
         )
         if not created:
             cart_item.quantity += quantity
             cart_item.save()
 
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        return Response(CartSerializer(cart).data)
 
 
 class CartUpdateItemAPIView(APIView):
+    """PATCH — Update cart item quantity; removes item when quantity ≤ 0."""
+
     permission_classes = [IsAuthenticated]
 
     def patch(self, request, item_id):
-        customer = Customer.objects.get(user=request.user)
-        try:
-            cart_item = CartItem.objects.get(id=item_id, cart__customer=customer)
-        except CartItem.DoesNotExist:
-            return Response({"error": "Cart item not found"}, status=404)
+        customer = get_customer_or_404(request.user)
+        cart_item = get_object_or_404(CartItem, id=item_id, cart__customer=customer)
 
         quantity = request.data.get("quantity")
         if quantity is not None and int(quantity) > 0:
@@ -68,172 +121,238 @@ class CartUpdateItemAPIView(APIView):
         else:
             cart_item.delete()
 
-        cart = Cart.objects.get(customer=customer)
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
+        cart = get_object_or_404(Cart, customer=customer)
+        return Response(CartSerializer(cart).data)
 
 
 class CartRemoveItemAPIView(APIView):
+    """DELETE — Remove a specific item from the cart."""
+
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, item_id):
-        customer = Customer.objects.get(user=request.user)
-        try:
-            cart_item = CartItem.objects.get(id=item_id, cart__customer=customer)
-            cart_item.delete()
-        except CartItem.DoesNotExist:
-            pass
+        customer = get_customer_or_404(request.user)
+        CartItem.objects.filter(id=item_id, cart__customer=customer).delete()
+        cart = get_object_or_404(Cart, customer=customer)
+        return Response(CartSerializer(cart).data)
 
-        cart = Cart.objects.get(customer=customer)
-        serializer = CartSerializer(cart)
-        return Response(serializer.data)
 
+# ──────────────────────────────────────────────
+# Checkout
+# ──────────────────────────────────────────────
 
 class CheckoutAPIView(APIView):
+    """
+    POST — Convert the cart into an Order.
+    Validates the delivery address, creates OrderItems via bulk_create,
+    recalculates total, and empties the cart.
+    """
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        customer = Customer.objects.get(user=request.user)
-        cart = Cart.objects.filter(customer=customer).first()
+        customer = get_customer_or_404(request.user)
+        cart = Cart.objects.filter(customer=customer).prefetch_related("items").first()
 
         if not cart or not cart.items.exists():
-            return Response({"error": "Cart is empty"}, status=400)
+            return Response({"error": "Cart is empty."}, status=status.HTTP_400_BAD_REQUEST)
 
-        address_id = request.data.get("delivery_address_id")
-        notes = request.data.get("notes", "")
+        serializer = OrderCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
 
-        try:
-            address = Address.objects.get(id=address_id, customer=customer)
-        except Address.DoesNotExist:
-            return Response({"error": "Invalid delivery address"}, status=400)
+        address = get_object_or_404(
+            Address,
+            id=serializer.validated_data["delivery_address_id"],
+            customer=customer,
+        )
 
         order = Order.objects.create(
             customer=customer,
             delivery_address=address,
-            notes=notes,
+            notes=serializer.validated_data.get("notes", ""),
         )
 
-        for cart_item in cart.items.all():
-            OrderItem.objects.create(
+        OrderItem.objects.bulk_create([
+            OrderItem(
                 order=order,
                 menu_item=cart_item.menu_item,
                 quantity=cart_item.quantity,
                 unit_price=cart_item.menu_item.price,
             )
+            for cart_item in cart.items.select_related("menu_item").all()
+        ])
 
         order.calculate_total()
         cart.items.all().delete()
 
-        serializer = OrderSerializer(order)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
+
+# ──────────────────────────────────────────────
+# Customer-facing order views
+# ──────────────────────────────────────────────
 
 class OrderListAPIView(generics.ListAPIView):
+    """GET — List the authenticated customer's orders, newest first."""
+
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        customer = Customer.objects.get(user=self.request.user)
-        return Order.objects.filter(customer=customer).prefetch_related("items__menu_item").order_by("-order_date")
+        customer = get_customer_or_404(self.request.user)
+        return (
+            Order.objects
+            .filter(customer=customer)
+            .prefetch_related("items__menu_item")
+            .order_by("-order_date")
+        )
 
 
 class OrderDetailAPIView(generics.RetrieveAPIView):
+    """GET — Retrieve one of the authenticated customer's orders."""
+
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        customer = Customer.objects.get(user=self.request.user)
-        return Order.objects.filter(customer=customer).prefetch_related("items__menu_item")
+        customer = get_customer_or_404(self.request.user)
+        return (
+            Order.objects
+            .filter(customer=customer)
+            .prefetch_related("items__menu_item")
+        )
 
 
-class OrderUpdateStatusAPIView(generics.UpdateAPIView):
-    serializer_class = OrderStatusUpdateSerializer
+class OrderCancelAPIView(APIView):
+    """
+    POST — Cancel an order that is still in "Order Placed" status.
+    Once the kitchen starts preparing it, cancellation is no longer allowed.
+    """
+
     permission_classes = [IsAuthenticated]
 
-    def get_queryset(self):
-        customer = Customer.objects.get(user=self.request.user)
-        return Order.objects.filter(customer=customer)
+    def post(self, request, pk):
+        customer = get_customer_or_404(request.user)
+        order = get_object_or_404(Order, pk=pk, customer=customer)
 
+        if order.status != "Order Placed":
+            return Response(
+                {"error": "Only orders with status 'Order Placed' can be cancelled."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-class AdminOrderListAPIView(generics.ListAPIView):
-    queryset = Order.objects.all().prefetch_related("items__menu_item", "customer").order_by("-order_date")
-    serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request, *args, **kwargs):
-        if not request.user.is_superuser:
-            return Response({"error": "Admin access required"}, status=403)
-        return super().get(request, *args, **kwargs)
-
-
-def update_inventory_for_order(order, deduct=True):
-    from menu.models import MenuItemRecipe
-    multiplier = -1 if deduct else 1
-    for order_item in order.items.all():
-        recipes = MenuItemRecipe.objects.filter(menu_item=order_item.menu_item)
-        for r in recipes:
-            inv = r.inventory_item
-            needed = r.quantity_required * order_item.quantity
-            if deduct:
-                if inv.quantity >= needed:
-                    inv.quantity -= needed
-                else:
-                    inv.quantity = 0
-            else:
-                inv.quantity += needed
-            inv.save()
-            # Auto-availability
-            for mi in r.menu_item.recipes.values_list("menu_item", flat=True):
-                from menu.models import MenuItem
-                try:
-                    MenuItem.objects.get(id=mi).auto_availability()
-                except MenuItem.DoesNotExist:
-                    pass
-
-
-class AdminOrderUpdateAPIView(generics.UpdateAPIView):
-    queryset = Order.objects.all()
-    serializer_class = OrderStatusUpdateSerializer
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, *args, **kwargs):
-        if not request.user.is_superuser:
-            return Response({"error": "Admin access required"}, status=403)
-        order = self.get_object()
-        old_status = order.status
-        status_changed = "status" in request.data and request.data["status"] != old_status
-        if status_changed:
-            new_status = request.data["status"]
-            if new_status == "Preparing" and old_status != "Preparing":
-                update_inventory_for_order(order, deduct=True)
-            elif new_status == "Cancelled" and old_status == "Preparing":
-                update_inventory_for_order(order, deduct=False)
-        if "status" in request.data:
-            order.status = request.data["status"]
-        if "payment_status" in request.data:
-            order.payment_status = request.data["payment_status"]
-        order.save()
+        order.status = "Cancelled"
+        order.save(update_fields=["status"])
         return Response(OrderSerializer(order).data)
 
 
-class DashboardAPIView(APIView):
+class OrderUpdateStatusAPIView(generics.UpdateAPIView):
+    """PATCH — Generic customer-facing status update (kept for backwards compat)."""
+
+    serializer_class = OrderStatusUpdateSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        customer = get_customer_or_404(self.request.user)
+        return Order.objects.filter(customer=customer)
+
+
+# ──────────────────────────────────────────────
+# Admin order views
+# ──────────────────────────────────────────────
+
+class AdminOrderListAPIView(generics.ListAPIView):
+    """
+    GET — Admin only: list all orders.
+    Supports filtering via query params:
+      ?status=Preparing
+      ?payment_status=Paid
+      ?customer=<name substring>
+      ?date_from=YYYY-MM-DD   (inclusive)
+      ?date_to=YYYY-MM-DD     (inclusive)
+    """
+
+    serializer_class = OrderSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        qs = (
+            Order.objects
+            .select_related("customer")
+            .prefetch_related("items__menu_item")
+            .order_by("-order_date")
+        )
+
+        p = self.request.query_params
+
+        if status_val := p.get("status"):
+            qs = qs.filter(status=status_val)
+
+        if payment_status := p.get("payment_status"):
+            qs = qs.filter(payment_status=payment_status)
+
+        if customer_name := p.get("customer"):
+            qs = qs.filter(customer__name__icontains=customer_name)
+
+        if date_from := p.get("date_from"):
+            qs = qs.filter(order_date__date__gte=date_from)
+
+        if date_to := p.get("date_to"):
+            qs = qs.filter(order_date__date__lte=date_to)
+
+        return qs
+
+
+class AdminOrderUpdateAPIView(generics.UpdateAPIView):
+    """
+    PATCH — Admin only: update order status and/or payment status.
+
+    Inventory side-effects:
+      Order Placed → Preparing   : deduct stock
+      Preparing    → Cancelled   : restore stock
+    """
+
+    queryset = Order.objects.all()
+    serializer_class = OrderStatusUpdateSerializer
+    permission_classes = [IsAdminUser]
+
+    def patch(self, request, *args, **kwargs):
+        order = self.get_object()
+        old_status = order.status
+        new_status = request.data.get("status", old_status)
+
+        if new_status != old_status:
+            if new_status == "Preparing":
+                update_inventory_for_order(order, deduct=True)
+            elif new_status == "Cancelled" and old_status == "Preparing":
+                update_inventory_for_order(order, deduct=False)
+
+        serializer = self.get_serializer(order, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(OrderSerializer(order).data)
+
+
+# ──────────────────────────────────────────────
+# Admin dashboard
+# ──────────────────────────────────────────────
+
+class DashboardAPIView(APIView):
+    """GET — Admin only: KPI stats + 12-month revenue trend + recent orders."""
+
+    permission_classes = [IsAdminUser]
+
     def get(self, request):
-        if not request.user.is_superuser:
-            return Response({"error": "Admin access required"}, status=403)
-        from accounts.models import Customer
-        from menu.models import MenuItem
-        from inventory.models import InventoryItem
-        from django.contrib.auth.models import User
+        from django.contrib.auth.models import User as DjangoUser
 
         paid_orders = Order.objects.filter(payment_status="Paid")
         total_revenue = sum(o.total_amount for o in paid_orders)
 
-        # Monthly revenue for last 12 calendar months
-        rev_by_month = defaultdict(float)
-        for o in paid_orders:
-            rev_by_month[o.order_date.strftime("%Y-%m")] += float(o.total_amount)
+        rev_by_month: dict[str, float] = defaultdict(float)
+        for order in paid_orders:
+            rev_by_month[order.order_date.strftime("%Y-%m")] += float(order.total_amount)
+
         now = timezone.now()
         revenue_trend = []
         for i in range(11, -1, -1):
@@ -242,13 +361,17 @@ class DashboardAPIView(APIView):
             while m < 1:
                 m += 12
                 y -= 1
-            key = f"{y}-{m:02d}"
-            revenue_trend.append(round(rev_by_month.get(key, 0), 2))
+            revenue_trend.append(round(rev_by_month.get(f"{y}-{m:02d}", 0.0), 2))
 
-        recent_orders = Order.objects.order_by("-order_date")[:5]
+        recent_orders = (
+            Order.objects
+            .select_related("customer")
+            .prefetch_related("items__menu_item")
+            .order_by("-order_date")[:5]
+        )
 
         return Response({
-            "total_customers": User.objects.count(),
+            "total_customers": DjangoUser.objects.count(),
             "total_menu_items": MenuItem.objects.count(),
             "available_menu_items": MenuItem.objects.filter(is_available=True).count(),
             "total_orders": Order.objects.count(),
@@ -257,11 +380,10 @@ class DashboardAPIView(APIView):
             "out_for_delivery": Order.objects.filter(status="Out for Delivery").count(),
             "delivered_orders": Order.objects.filter(status="Delivered").count(),
             "paid_orders": Order.objects.filter(payment_status="Paid").count(),
-            "low_stock_items": InventoryItem.objects.filter(quantity__lte=F("low_stock_limit")).count(),
+            "low_stock_items": InventoryItem.objects.filter(
+                quantity__lte=F("low_stock_limit")
+            ).count(),
             "total_revenue": float(total_revenue),
             "revenue_trend": revenue_trend,
             "recent_orders": OrderSerializer(recent_orders, many=True).data,
         })
-
-
-from .models import OrderItem  # noqa

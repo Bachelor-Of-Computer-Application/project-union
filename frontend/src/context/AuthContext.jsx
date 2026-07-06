@@ -22,6 +22,14 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  // ProfilePage fires this event after a successful profile update so the
+  // sidebar/topbar avatar and username stay in sync without a full re-login.
+  useEffect(() => {
+    const handler = (e) => setUser(e.detail);
+    window.addEventListener("auth:refresh", handler);
+    return () => window.removeEventListener("auth:refresh", handler);
+  }, []);
+
   const login = async (username, password) => {
     const res = await loginApi(username, password);
     localStorage.setItem("access_token", res.data.access);

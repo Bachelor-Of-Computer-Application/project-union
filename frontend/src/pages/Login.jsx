@@ -77,7 +77,7 @@ export default function Login() {
         <div className="auth-card">
           <div className="auth-logo">
             <ForkKnife size={20} weight="fill" style={{ color: "var(--primary)" }} />
-            FoodExpress
+            QuickServer1
           </div>
 
           <h1 className="auth-title">Welcome back</h1>

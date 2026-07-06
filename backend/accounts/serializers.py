@@ -39,3 +39,31 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "email", "is_active", "is_admin", "customer"]
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    """Allows the authenticated user to update their Customer profile fields."""
+
+    name = serializers.CharField(max_length=100, required=False)
+    phone = serializers.CharField(max_length=15, required=False)
+    email = serializers.EmailField(required=False)
+
+    def validate_email(self, value):
+        from .models import Customer
+        user = self.context["request"].user
+        if Customer.objects.exclude(user=user).filter(email=value).exists():
+            raise serializers.ValidationError("This email is already in use.")
+        return value
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """Allows the authenticated user to change their password."""
+
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, min_length=6)
+
+    def validate_current_password(self, value):
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value

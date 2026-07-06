@@ -46,7 +46,7 @@ export default function Register() {
           <div className="auth-visual-icon">
             <ForkKnife size={36} weight="fill" />
           </div>
-          <h2>Join FoodExpress today</h2>
+          <h2>Join QuickServer1 today</h2>
           <p>Create your free account and start ordering from the best local restaurants in minutes.</p>
 
           <div className="auth-features" style={{ marginTop: "28px" }}>
@@ -66,7 +66,7 @@ export default function Register() {
         <div className="auth-card">
           <div className="auth-logo">
             <ForkKnife size={20} weight="fill" style={{ color: "var(--primary)" }} />
-            FoodExpress
+            QuickServer1
           </div>
 
           <h1 className="auth-title">Create account</h1>

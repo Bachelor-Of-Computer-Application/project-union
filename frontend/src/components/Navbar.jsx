@@ -19,7 +19,7 @@ export default function Navbar() {
       <div className="navbar-inner">
         <Link to={isAuthenticated && user?.is_admin ? "/" : "/menu"} className="navbar-brand">
           <ForkKnife className="brand-icon" size={22} weight="fill" />
-          FoodExpress
+          QuickServer1
         </Link>
 
         <div className="navbar-links">

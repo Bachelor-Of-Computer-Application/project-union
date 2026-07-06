@@ -2,9 +2,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   ForkKnife, House, ClipboardText, Package,
-  ShoppingCart, Users, ChartBar,
+  ShoppingCart, Users, ChartBar, Phone,
   SignOut, CaretDoubleLeft, CaretDoubleRight,
-  SignIn, UserPlus, Fire,
+  SignIn, UserPlus, Fire, UserCircle,
 } from "@phosphor-icons/react";
 import { useAuth } from "../context/AuthContext";
 import { getCart } from "../api/orders";
@@ -38,7 +38,10 @@ const CUSTOMER_NAV = [
   {
     section: "Discover",
     items: [
+      { label: "Home",         icon: House,         path: "/" },
       { label: "Browse Menu",  icon: ForkKnife,     path: "/menu" },
+      { label: "About Us",     icon: Users,         path: "/about" },
+      { label: "Contact",      icon: Phone,         path: "/contact" },
     ],
   },
   {
@@ -46,6 +49,7 @@ const CUSTOMER_NAV = [
     items: [
       { label: "Cart",         icon: ShoppingCart,  path: "/cart" },
       { label: "My Orders",    icon: ClipboardText, path: "/orders" },
+      { label: "My Profile",   icon: UserCircle,    path: "/profile" },
     ],
   },
 ];
@@ -112,7 +116,7 @@ export default function Sidebar({ collapsed, onToggle }) {
       <div className="sb-logo">
         <Link to={isAuthenticated ? (user?.is_admin ? "/" : "/menu") : "/menu"} className="sb-brand">
           <ForkKnife size={22} weight="fill" className="sb-brand-icon" />
-          <span className="sb-brand-text">FoodExpress</span>
+          <span className="sb-brand-text">QuickServer1</span>
         </Link>
         <button className="sb-toggle" onClick={onToggle} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
           {collapsed

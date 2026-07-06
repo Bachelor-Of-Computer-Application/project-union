@@ -1,10 +1,17 @@
 from rest_framework import serializers
-from .models import Order, OrderItem, Cart, CartItem
 
+from .models import Cart, CartItem, Order, OrderItem
+
+
+# ──────────────────────────────────────────────
+# Cart serializers
+# ──────────────────────────────────────────────
 
 class CartItemSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source="menu_item.name", read_only=True)
-    item_price = serializers.DecimalField(source="menu_item.price", read_only=True, max_digits=10, decimal_places=2)
+    item_price = serializers.DecimalField(
+        source="menu_item.price", read_only=True, max_digits=10, decimal_places=2
+    )
     item_image = serializers.ImageField(source="menu_item.image", read_only=True)
     total_price = serializers.DecimalField(read_only=True, max_digits=10, decimal_places=2)
 
@@ -28,9 +35,15 @@ class CartItemWriteSerializer(serializers.ModelSerializer):
         fields = ["menu_item", "quantity"]
 
 
+# ──────────────────────────────────────────────
+# Order serializers
+# ──────────────────────────────────────────────
+
 class OrderItemSerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source="menu_item.name", read_only=True)
-    item_price = serializers.DecimalField(source="unit_price", read_only=True, max_digits=10, decimal_places=2)
+    item_price = serializers.DecimalField(
+        source="unit_price", read_only=True, max_digits=10, decimal_places=2
+    )
 
     class Meta:
         model = OrderItem
@@ -45,10 +58,18 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            "id", "customer", "customer_name", "delivery_address",
-            "delivery_address_detail", "order_date", "status",
-            "total_amount", "payment_method", "payment_status",
-            "notes", "items",
+            "id",
+            "customer",
+            "customer_name",
+            "delivery_address",
+            "delivery_address_detail",
+            "order_date",
+            "status",
+            "total_amount",
+            "payment_method",
+            "payment_status",
+            "notes",
+            "items",
         ]
         extra_kwargs = {
             "customer": {"read_only": True},
@@ -73,11 +94,18 @@ class OrderCreateSerializer(serializers.Serializer):
         from accounts.models import Address
         user = self.context["request"].user
         if not Address.objects.filter(id=value, customer__user=user).exists():
-            raise serializers.ValidationError("Address not found")
+            raise serializers.ValidationError("Address not found.")
         return value
 
 
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
+    """Used by both customer (status) and admin (status + payment_status) update flows."""
+
     class Meta:
         model = Order
-        fields = ["status"]
+        fields = ["status", "payment_status"]
+        # Both fields optional so partial updates work
+        extra_kwargs = {
+            "status": {"required": False},
+            "payment_status": {"required": False},
+        }
