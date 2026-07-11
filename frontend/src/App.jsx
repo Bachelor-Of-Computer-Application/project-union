@@ -15,6 +15,8 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/AdminDashboard";
 import RestaurantPanel from "./pages/RestaurantPanel";
+import PaymentSuccessPage from "./pages/PaymentSuccessPage";
+import PaymentFailurePage from "./pages/PaymentFailurePage";
 import "./App.css";
 
 export default function App() {
@@ -37,6 +39,10 @@ export default function App() {
             <Route path="/orders"     element={<ProtectedRoute><OrdersPage /></ProtectedRoute>} />
             <Route path="/orders/:id" element={<ProtectedRoute><OrderDetailPage /></ProtectedRoute>} />
             <Route path="/profile"    element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
+
+            {/* Payment callbacks */}
+            <Route path="/orders/payment-success" element={<ProtectedRoute><PaymentSuccessPage /></ProtectedRoute>} />
+            <Route path="/orders/payment-failure" element={<ProtectedRoute><PaymentFailurePage /></ProtectedRoute>} />
 
             {/* Admin-only */}
             <Route path="/admin"      element={<ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>} />

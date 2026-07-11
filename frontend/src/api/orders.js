@@ -14,10 +14,11 @@ export const removeCartItem = (itemId) =>
   client.delete(`/orders/cart/item/${itemId}/remove/`);
 
 // ── Checkout ──────────────────────────────────────────────────────────
-export const checkout = (deliveryAddressId, notes = "") =>
+export const checkout = (deliveryAddressId, notes = "", paymentMethod = "COD") =>
   client.post("/orders/checkout/", {
     delivery_address_id: deliveryAddressId,
     notes,
+    payment_method: paymentMethod,
   });
 
 // ── Customer orders ───────────────────────────────────────────────────
@@ -48,3 +49,34 @@ export const adminUpdateOrder = (id, data) =>
 // ── Dashboard ─────────────────────────────────────────────────────────
 export const getDashboard = () =>
   client.get("/orders/dashboard/");
+
+// ── Payment ───────────────────────────────────────────────────────────
+/**
+ * Initiate eSewa payment for an order.
+ * Returns payment form URL and form data to submit to eSewa.
+ */
+export const initiatePayment = (orderId, paymentMethod) =>
+  client.post("/orders/payment/initiate/", {
+    order_id: orderId,
+    payment_method: paymentMethod,
+  });
+
+/**
+ * Verify payment status with eSewa.
+ * Called after user returns from eSewa payment page.
+ */
+export const verifyPayment = (transactionUuid) =>
+  client.get("/orders/payment/verify/", { params: { transaction_uuid: transactionUuid } });
+
+/**
+ * Payment success callback from eSewa.
+ * (Typically called server-side, but can be called from frontend for verification)
+ */
+export const paymentSuccess = (data) =>
+  client.post("/orders/payment/success/", data);
+
+/**
+ * Payment failure callback from eSewa.
+ */
+export const paymentFailure = (data) =>
+  client.post("/orders/payment/failure/", data);

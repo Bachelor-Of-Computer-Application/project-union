@@ -5,7 +5,7 @@ import { getMenuCategories } from "../api/menu";
 import { useAuth } from "../context/AuthContext";
 import {
   Users, ClipboardText, CurrencyDollar, ChartBar,
-  ShoppingCart, ForkKnife, Package, TrendUp,
+  ShoppingCart, ForkKnife, TrendUp,
   ArrowRight, CheckCircle, Clock, Truck, Star,
   Flame, SealCheck, Timer, MapPin,
 } from "@phosphor-icons/react";
@@ -38,12 +38,14 @@ function MiniLineChart({ data, color = "var(--p)" }) {
 const STATUS_CHART = {
   "Order Placed":     { color: "var(--warning)",  label: "Placed" },
   Preparing:          { color: "var(--info)",      label: "Preparing" },
+  Ready:              { color: "#8b5cf6",          label: "Ready" },
   "Out for Delivery": { color: "var(--p)",         label: "Delivering" },
   Delivered:          { color: "var(--success)",   label: "Delivered" },
 };
 const STATUS_BADGE = {
   "Order Placed":     "badge-warning",
   Preparing:          "badge-info",
+  Ready:              "badge-secondary",
   "Out for Delivery": "badge-primary",
   Delivered:          "badge-success",
   Cancelled:          "badge-danger",
@@ -88,7 +90,6 @@ function AdminHome({ user }) {
     { label: "Total Revenue",  value: `Rs ${(data?.total_revenue || 0).toLocaleString()}`, icon: CurrencyDollar, iconClass: "success", trend: "+12%",                         up: true  },
     { label: "Total Orders",   value: totalOrders,                                          icon: ClipboardText,  iconClass: "",        trend: `${data?.pending_orders||0} pending`, up: null  },
     { label: "Customers",      value: data?.total_customers || 0,                           icon: Users,          iconClass: "info",    trend: "+5 this week",               up: true  },
-    { label: "Low Stock Items",value: data?.low_stock_items || 0,                           icon: Package,        iconClass: "danger",  trend: "Needs attention",            up: false },
   ];
 
   return (
@@ -187,7 +188,6 @@ function AdminHome({ user }) {
             <div className="quick-actions">
               <Link to="/admin?tab=menu"      className="quick-action-btn"><ForkKnife size={18} /><span>Menu</span></Link>
               <Link to="/admin?tab=orders"    className="quick-action-btn"><ShoppingCart size={18} /><span>Orders</span></Link>
-              <Link to="/admin?tab=inventory" className="quick-action-btn"><Package size={18} /><span>Inventory</span></Link>
               <Link to="/restaurant"          className="quick-action-btn"><Clock size={18} /><span>Kitchen</span></Link>
             </div>
           </div>
@@ -201,7 +201,6 @@ function AdminHome({ user }) {
           { label: "Preparing",  value: data?.preparing_orders, badge: "badge-info"     },
           { label: "Delivering", value: data?.out_for_delivery, badge: "badge-primary"  },
           { label: "Delivered",  value: data?.delivered_orders, badge: "badge-success"  },
-          { label: "Low Stock",  value: data?.low_stock_items,  badge: "badge-danger"   },
         ].map((item) => (
           <div key={item.label} className="stat-card-sm">
             <span className={`badge ${item.badge}`}>{item.value ?? 0}</span>

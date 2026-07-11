@@ -1,7 +1,6 @@
 import { useEffect, useState, useRef } from "react";
-import { getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem, getMenuCategories, getRecipes, createRecipe, deleteRecipe } from "../api/menu";
+import { getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem, getMenuCategories } from "../api/menu";
 import { getAdminOrders, adminUpdateOrder } from "../api/orders";
-import { getInventory } from "../api/inventory";
 import {
   CheckCircle, XCircle, Plus, PencilSimple, Trash,
   ForkKnife, ClipboardText, Clock, Fire, Truck, Package,
@@ -10,6 +9,7 @@ import {
 const STATUS_CONFIG = {
   "Order Placed":     { badge: "badge-warning", color: "var(--warning)",  label: "New Order", icon: Clock },
   Preparing:          { badge: "badge-info",    color: "var(--info)",     label: "Preparing", icon: Fire },
+  Ready:              { badge: "badge-secondary", color: "#8b5cf6",        label: "Ready",     icon: Fire },
   "Out for Delivery": { badge: "badge-primary", color: "var(--primary)",  label: "Out",       icon: Truck },
 };
 
@@ -24,9 +24,6 @@ export default function RestaurantPanel() {
   const [form, setForm] = useState({ name: "", category: "", price: "", description: "", is_available: true });
   const [imageFile, setImageFile] = useState(null);
   const [formError, setFormError] = useState("");
-  const [inventoryItems, setInventoryItems] = useState([]);
-  const [recipes, setRecipes] = useState([]);
-  const [newRecipe, setNewRecipe] = useState({ inventory_item: "", quantity_required: "" });
   const [draggedId, setDraggedId] = useState(null);
   const [dropTarget, setDropTarget] = useState(null); // { status, index }
   const colRefs = useRef({});
@@ -90,8 +87,8 @@ export default function RestaurantPanel() {
 
   const fetchAll = () => {
     setLoading(true);
-    Promise.all([getMenuManage(), getAdminOrders(), getMenuCategories(), getInventory(), getRecipes()])
-      .then(([m, o, c, inv, r]) => { setItems(m.data); setOrders(o.data); setCategories(c.data); setInventoryItems(inv.data); setRecipes(r.data); })
+    Promise.all([getMenuManage(), getAdminOrders(), getMenuCategories()])
+      .then(([m, o, c]) => { setItems(m.data); setOrders(o.data); setCategories(c.data); })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
@@ -127,20 +124,6 @@ export default function RestaurantPanel() {
     if (confirm("Delete this item?")) { await deleteMenuItem(id); fetchAll(); }
   };
 
-  const handleAddRecipe = async () => {
-    if (!newRecipe.inventory_item || !newRecipe.quantity_required || !editItem) return;
-    await createRecipe({ menu_item: editItem.id, inventory_item: Number(newRecipe.inventory_item), quantity_required: Number(newRecipe.quantity_required) });
-    setNewRecipe({ inventory_item: "", quantity_required: "" });
-    const r = await getRecipes();
-    setRecipes(r.data);
-  };
-
-  const handleRemoveRecipe = async (recipeId) => {
-    await deleteRecipe(recipeId);
-    const r = await getRecipes();
-    setRecipes(r.data);
-  };
-
   const handleOrderStatus = async (id, status) => {
     await adminUpdateOrder(id, { status }); fetchAll();
   };
@@ -150,11 +133,6 @@ export default function RestaurantPanel() {
   }
 
   const activeOrders = orders.filter((o) => !["Delivered", "Cancelled"].includes(o.status));
-  const byStatus = {
-    "Order Placed":     activeOrders.filter((o) => o.status === "Order Placed"),
-    Preparing:          activeOrders.filter((o) => o.status === "Preparing"),
-    "Out for Delivery": activeOrders.filter((o) => o.status === "Out for Delivery"),
-  };
 
   const TABS = [
     { key: "orders", label: "Live Orders", icon: ClipboardText,
@@ -197,7 +175,7 @@ export default function RestaurantPanel() {
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "16px" }}>
-              {Object.entries(byStatus).map(([status, statusOrders]) => {
+              {[["Order Placed", orders.filter((o) => o.status === "Order Placed" && !activeFilter(o))], ["Preparing", orders.filter((o) => o.status === "Preparing" && !activeFilter(o))], ["Ready", orders.filter((o) => o.status === "Ready" && !activeFilter(o))], ["Out for Delivery", orders.filter((o) => o.status === "Out for Delivery" && !activeFilter(o))]].map(([status, statusOrders]) => {
                 const cfg = STATUS_CONFIG[status];
                 const Icon = cfg.icon;
                 return (
@@ -372,43 +350,6 @@ export default function RestaurantPanel() {
                 )}
                 <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files[0] || null)} />
               </div>
-              {editItem && (
-                <div className="form-group" style={{ borderTop: "1.5px solid var(--border)", paddingTop: "16px", marginTop: "8px" }}>
-                  <label style={{ fontWeight: 700, fontSize: "0.875rem" }}>Recipe Ingredients</label>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "10px" }}>
-                    Link this menu item to inventory items so stock is auto-deducted when orders are prepared.
-                  </div>
-                  {recipes.filter((r) => r.menu_item === editItem.id).map((r) => (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                      <span style={{ flex: 1, fontSize: "0.8125rem" }}>{r.inventory_name} — x{r.quantity_required}</span>
-                      <button className="btn btn-xs btn-danger" onClick={() => handleRemoveRecipe(r.id)}>
-                        <Trash size={11} />
-                      </button>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "6px" }}>
-                    <select
-                      value={newRecipe.inventory_item}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, inventory_item: e.target.value })}
-                      style={{ flex: 1, padding: "6px 8px", fontSize: "0.8125rem", borderRadius: "var(--r-sm)", border: "1.5px solid var(--border)", background: "var(--surface)" }}
-                    >
-                      <option value="">Select ingredient...</option>
-                      {inventoryItems.map((inv) => (
-                        <option key={inv.id} value={inv.id}>{inv.name} ({inv.quantity} {inv.unit})</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number" min="0.01" step="0.01" placeholder="Qty"
-                      value={newRecipe.quantity_required}
-                      onChange={(e) => setNewRecipe({ ...newRecipe, quantity_required: e.target.value })}
-                      style={{ width: "60px", padding: "6px 8px", fontSize: "0.8125rem", borderRadius: "var(--r-sm)", border: "1.5px solid var(--border)", background: "var(--surface)" }}
-                    />
-                    <button className="btn btn-xs btn-primary" onClick={handleAddRecipe}>
-                      <Plus size={12} /> Add
-                    </button>
-                  </div>
-                </div>
-              )}
               <div className="form-actions">
                 <button className="btn btn-primary" onClick={handleSubmit}>{editItem ? "Update" : "Create"}</button>
                 <button className="btn btn-outline" onClick={resetForm}>Cancel</button>
@@ -422,7 +363,6 @@ export default function RestaurantPanel() {
                 <tr>
                   <th>Item</th>
                   <th>Price</th>
-                  <th>Recipe</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -437,13 +377,6 @@ export default function RestaurantPanel() {
                       </div>
                     </td>
                     <td style={{ fontWeight: 700, color: "var(--primary-dark)" }}>Rs {item.price}</td>
-                    <td style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      {recipes.filter((r) => r.menu_item === item.id).length > 0 ? (
-                        <span>{recipes.filter((r) => r.menu_item === item.id).length} ingredients</span>
-                      ) : (
-                        <span style={{ opacity: 0.5 }}>—</span>
-                      )}
-                    </td>
                     <td>
                       {item.is_available
                         ? <span className="badge badge-success"><CheckCircle size={12} weight="fill" /> Available</span>

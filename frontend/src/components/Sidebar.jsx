@@ -22,7 +22,6 @@ const ADMIN_NAV = [
     items: [
       { label: "Live Orders",      icon: ClipboardText, path: "/admin?tab=orders",    basePath: "/admin" },
       { label: "Menu Management",  icon: ForkKnife,     path: "/admin?tab=menu",      basePath: "/admin" },
-      { label: "Inventory",        icon: Package,       path: "/admin?tab=inventory", basePath: "/admin" },
     ],
   },
   {

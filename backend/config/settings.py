@@ -10,6 +10,13 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+# Load environment variables from .env file
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 # ─────────────────────────────────────────────
 # BASE DIRECTORY
 # ─────────────────────────────────────────────

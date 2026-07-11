@@ -3,23 +3,19 @@ import { useSearchParams } from "react-router-dom";
 import { getAdminOrders, adminUpdateOrder, getDashboard } from "../api/orders";
 import {
   getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem,
-  getMenuCategories, getRecipes, createRecipe, deleteRecipe,
-  getCategories, createCategory, updateCategory, deleteCategory,
+  getMenuCategories, getCategories, createCategory, updateCategory, deleteCategory,
 } from "../api/menu";
-import {
-  getInventory, createInventoryItem, updateInventoryItem,
-  deleteInventoryItem, restockInventoryItem, getInventoryStats,
-} from "../api/inventory";
 import { adminGetUsers, adminToggleUserActive, adminGetPayments } from "../api/accounts";
 import {
-  CheckCircle, XCircle, WarningCircle, Plus, PencilSimple,
-  Trash, ClipboardText, ForkKnife, Package, Users,
-  CurrencyDollar, UserSwitch, Tag, ArrowClockwise, Warning,
+  CheckCircle, XCircle, Plus, PencilSimple,
+  Trash, ClipboardText, ForkKnife, Users,
+  CurrencyDollar, UserSwitch, Tag,
 } from "@phosphor-icons/react";
 
 const STATUS_COLORS = {
   "Order Placed":     "#f59e0b",
   Preparing:          "#3b82f6",
+  Ready:              "#8b5cf6",
   "Out for Delivery": "#f25f3a",
   Delivered:          "#22c55e",
   Cancelled:          "#ef4444",
@@ -31,8 +27,6 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState(searchParams.get("tab") || "orders");
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
-  const [inventory, setInventory] = useState([]);
-  const [invStats, setInvStats] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
@@ -51,28 +45,18 @@ export default function AdminDashboard() {
   const [editCat, setEditCat] = useState(null);
   const [catName, setCatName] = useState("");
 
-  // Inventory form
-  const [showInvForm, setShowInvForm] = useState(false);
-  const [editInv, setEditInv] = useState(null);
-  const [invForm, setInvForm] = useState({ name: "", quantity: "", unit: "", low_stock_limit: "" });
-
-  // Restock modal
-  const [restockItem, setRestockItem] = useState(null);
-  const [restockQty, setRestockQty] = useState("");
-  const [restockLoading, setRestockLoading] = useState(false);
-
   const fetchAll = () => {
     setLoading(true);
     Promise.all([
-      getAdminOrders(), getMenuManage(), getInventory(), getDashboard(),
+      getAdminOrders(), getMenuManage(), getDashboard(),
       getMenuCategories(), adminGetUsers(), adminGetPayments(),
-      getCategories(), getInventoryStats(),
+      getCategories(),
     ])
-      .then(([o, m, i, d, c, u, p, cats, stats]) => {
-        setOrders(o.data); setMenuItems(m.data); setInventory(i.data);
+      .then(([o, m, d, c, u, p, cats]) => {
+        setOrders(o.data); setMenuItems(m.data);
         setDashboard(d.data); setCategories(c.data);
         setUsers(u.data); setPayments(p.data);
-        setAllCategories(cats.data); setInvStats(stats.data);
+        setAllCategories(cats.data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -130,35 +114,6 @@ export default function AdminDashboard() {
     await adminUpdateOrder(id, { payment_status }); fetchAll();
   };
 
-  // ── Inventory handlers ────────────────────────────────────────────
-  const resetInvForm = () => {
-    setInvForm({ name: "", quantity: "", unit: "", low_stock_limit: "" });
-    setEditInv(null); setShowInvForm(false);
-  };
-  const handleEditInv = (item) => {
-    setInvForm({ name: item.name, quantity: item.quantity, unit: item.unit, low_stock_limit: item.low_stock_limit });
-    setEditInv(item); setShowInvForm(true);
-  };
-  const handleInvSubmit = async () => {
-    const data = { ...invForm, quantity: Number(invForm.quantity), low_stock_limit: Number(invForm.low_stock_limit) };
-    if (editInv) { await updateInventoryItem(editInv.id, data); }
-    else { await createInventoryItem(data); }
-    resetInvForm(); fetchAll();
-  };
-  const handleDeleteInventory = async (id) => {
-    if (confirm("Delete this inventory item?")) { await deleteInventoryItem(id); fetchAll(); }
-  };
-  const handleRestock = async () => {
-    if (!restockItem || !restockQty || Number(restockQty) <= 0) return;
-    setRestockLoading(true);
-    try {
-      await restockInventoryItem(restockItem.id, Number(restockQty));
-      setRestockItem(null); setRestockQty(""); fetchAll();
-    } finally {
-      setRestockLoading(false);
-    }
-  };
-
   const handleToggleUser = async (userId, currentActive) => {
     await adminToggleUserActive(userId, !currentActive); fetchAll();
   };
@@ -167,13 +122,10 @@ export default function AdminDashboard() {
     return <div className="page-loader"><div className="loader-spinner" />Loading admin panel...</div>;
   }
 
-  const lowStockItems = inventory.filter((i) => Number(i.quantity) <= Number(i.low_stock_limit));
-
   const TABS = [
     { key: "orders",     label: "Orders",     icon: ClipboardText,  count: orders.length },
     { key: "menu",       label: "Menu",        icon: ForkKnife,      count: menuItems.length },
     { key: "categories", label: "Categories",  icon: Tag,            count: allCategories.length },
-    { key: "inventory",  label: "Inventory",   icon: Package,        count: inventory.length },
     { key: "users",      label: "Users",       icon: Users,          count: users.length },
     { key: "payments",   label: "Payments",    icon: CurrencyDollar, count: payments.length },
   ];
@@ -182,7 +134,7 @@ export default function AdminDashboard() {
     <div className="admin-page">
       <div className="page-header">
         <h1>Admin Panel</h1>
-        <p>Manage orders, menu, categories, inventory, users, and payments</p>
+        <p>Manage orders, menu, categories, users, and payments</p>
       </div>
 
       {/* KPI Cards */}
@@ -192,7 +144,6 @@ export default function AdminDashboard() {
             { label: "Customers",    value: dashboard.total_customers, icon: Users,          cls: "info" },
             { label: "Total Orders", value: dashboard.total_orders,    icon: ClipboardText,  cls: "" },
             { label: "Revenue",      value: `Rs ${(dashboard.total_revenue||0).toLocaleString()}`, icon: CurrencyDollar, cls: "success" },
-            { label: "Low Stock",    value: dashboard.low_stock_items, icon: Package,        cls: "danger" },
           ].map((card) => {
             const Icon = card.icon;
             return (
@@ -207,26 +158,6 @@ export default function AdminDashboard() {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Low-stock alert banner */}
-      {lowStockItems.length > 0 && (
-        <div style={{
-          background: "var(--danger-l)", border: "1.5px solid var(--danger-b)",
-          borderRadius: "var(--r-sm)", padding: "12px 16px", marginBottom: 20,
-          display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
-        }}>
-          <Warning size={18} weight="fill" style={{ color: "var(--danger)", flexShrink: 0 }} />
-          <span style={{ fontWeight: 600, fontSize: "0.875rem", color: "var(--danger)" }}>
-            Low stock alert:
-          </span>
-          <span style={{ fontSize: "0.875rem", color: "var(--danger)", flex: 1 }}>
-            {lowStockItems.map((i) => i.name).join(", ")}
-          </span>
-          <button className="btn btn-xs btn-danger" onClick={() => switchTab("inventory")}>
-            View Inventory
-          </button>
         </div>
       )}
 
@@ -266,7 +197,7 @@ export default function AdminDashboard() {
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ width: 8, height: 8, borderRadius: "50%", background: STATUS_COLORS[o.status]||"#6b7280", display: "inline-block", flexShrink: 0 }} />
                           <select value={o.status} onChange={(e) => handleOrderStatus(o.id, e.target.value)} className="form-select-sm">
-                            {["Order Placed","Preparing","Out for Delivery","Delivered","Cancelled"].map((s) => <option key={s}>{s}</option>)}
+                            {["Order Placed","Preparing","Ready","Out for Delivery","Delivered","Cancelled"].map((s) => <option key={s}>{s}</option>)}
                           </select>
                         </div>
                       </td>
@@ -414,119 +345,6 @@ export default function AdminDashboard() {
                           <div style={{ display:"flex",gap:6 }}>
                             <button className="btn btn-xs btn-outline" onClick={() => handleEditCat(cat)}><PencilSimple size={13}/> Edit</button>
                             <button className="btn btn-xs btn-danger" onClick={() => handleDeleteCat(cat.id)}><Trash size={13}/> Delete</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── INVENTORY TAB ──────────────────────────────────────────── */}
-      {tab === "inventory" && (
-        <div className="section">
-          <div className="section-header">
-            <h2>Inventory</h2>
-            <div style={{ display:"flex",gap:10,alignItems:"center" }}>
-              {lowStockItems.length > 0 && (
-                <span className="badge badge-danger"><WarningCircle size={12} weight="fill"/> {lowStockItems.length} low stock</span>
-              )}
-              <button className="btn btn-primary btn-sm" onClick={() => { resetInvForm(); setShowInvForm(true); }}>
-                <Plus size={15} weight="bold"/> Add Item
-              </button>
-            </div>
-          </div>
-
-          {/* Restock modal */}
-          {restockItem && (
-            <div style={{
-              position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:9000,
-              display:"flex",alignItems:"center",justifyContent:"center",
-            }}>
-              <div style={{ background:"var(--surface)",borderRadius:"var(--r)",padding:28,width:360,boxShadow:"var(--sh-lg)" }}>
-                <h3 style={{ marginBottom:16,fontFamily:"var(--fh)" }}>Restock: {restockItem.name}</h3>
-                <p style={{ fontSize:"0.875rem",color:"var(--txt-2)",marginBottom:14 }}>
-                  Current stock: <strong>{restockItem.quantity} {restockItem.unit}</strong>
-                </p>
-                <div className="form-group">
-                  <label>Quantity to Add ({restockItem.unit})</label>
-                  <input
-                    type="number" min="0.01" step="0.01"
-                    value={restockQty}
-                    onChange={(e) => setRestockQty(e.target.value)}
-                    placeholder="e.g. 10"
-                    autoFocus
-                  />
-                </div>
-                <div className="form-actions">
-                  <button className="btn btn-success" onClick={handleRestock} disabled={restockLoading}>
-                    {restockLoading ? "Restocking…" : <><ArrowClockwise size={14}/> Restock</>}
-                  </button>
-                  <button className="btn btn-outline" onClick={() => { setRestockItem(null); setRestockQty(""); }}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showInvForm && (
-            <div className="form-card">
-              <h3>{editInv ? "Edit Inventory Item" : "Add Inventory Item"}</h3>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Item Name</label>
-                  <input value={invForm.name} onChange={(e) => setInvForm({...invForm,name:e.target.value})} required placeholder="e.g. Tomato" />
-                </div>
-                <div className="form-group">
-                  <label>Unit</label>
-                  <input value={invForm.unit} onChange={(e) => setInvForm({...invForm,unit:e.target.value})} required placeholder="kg, ltr, pcs" />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Quantity</label>
-                  <input type="number" min="0" step="0.01" value={invForm.quantity} onChange={(e) => setInvForm({...invForm,quantity:e.target.value})} required />
-                </div>
-                <div className="form-group">
-                  <label>Low Stock Limit</label>
-                  <input type="number" min="1" value={invForm.low_stock_limit} onChange={(e) => setInvForm({...invForm,low_stock_limit:e.target.value})} required />
-                </div>
-              </div>
-              <div className="form-actions">
-                <button className="btn btn-primary" onClick={handleInvSubmit}>{editInv?"Update":"Create"}</button>
-                <button className="btn btn-outline" onClick={resetInvForm}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          <div style={{ background:"var(--surface)",border:"1.5px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden" }}>
-            <div className="table-responsive">
-              <table className="table">
-                <thead><tr><th>Item</th><th>Quantity</th><th>Unit</th><th>Low Stock Limit</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody>
-                  {inventory.map((item) => {
-                    const isLow = Number(item.quantity) <= Number(item.low_stock_limit);
-                    return (
-                      <tr key={item.id}>
-                        <td><strong>{item.name}</strong></td>
-                        <td style={{ fontWeight:600,color:isLow?"var(--danger)":"var(--text)" }}>{item.quantity}</td>
-                        <td style={{ color:"var(--text-muted)" }}>{item.unit}</td>
-                        <td style={{ color:"var(--text-muted)" }}>{item.low_stock_limit}</td>
-                        <td>
-                          {isLow
-                            ? <span className="badge badge-danger"><WarningCircle size={12} weight="fill"/> Low Stock</span>
-                            : <span className="badge badge-success"><CheckCircle size={12} weight="fill"/> In Stock</span>}
-                        </td>
-                        <td>
-                          <div style={{ display:"flex",gap:6 }}>
-                            <button className="btn btn-xs btn-success" onClick={() => { setRestockItem(item); setRestockQty(""); }} title="Add stock">
-                              <ArrowClockwise size={13}/> Restock
-                            </button>
-                            <button className="btn btn-xs btn-outline" onClick={() => handleEditInv(item)}><PencilSimple size={13}/> Edit</button>
-                            <button className="btn btn-xs btn-danger" onClick={() => handleDeleteInventory(item.id)}><Trash size={13}/></button>
                           </div>
                         </td>
                       </tr>

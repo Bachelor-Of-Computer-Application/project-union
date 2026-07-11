@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCart, checkout } from "../api/orders";
+import { getCart, checkout, initiatePayment } from "../api/orders";
 import { getAddresses, createAddress } from "../api/accounts";
-import { CurrencyDollar, MapPin, Check, ShoppingCart, Truck, ClipboardText } from "@phosphor-icons/react";
+import { CurrencyDollar, MapPin, Check, ShoppingCart, Truck, ClipboardText, CreditCard } from "@phosphor-icons/react";
 
 const STEPS = [
   { label: "Review Cart",    icon: ShoppingCart },
   { label: "Delivery",       icon: MapPin },
-  { label: "Place Order",    icon: ClipboardText },
+  { label: "Payment",        icon: CreditCard },
+];
+
+const PAYMENT_METHODS = [
+  { id: "COD", name: "Cash on Delivery", description: "Pay when your order arrives" },
+  { id: "eSewa", name: "eSewa", description: "Secure online payment" },
 ];
 
 export default function CheckoutPage() {
   const [cart, setCart] = useState(null);
   const [addresses, setAddresses] = useState([]);
   const [selectedAddress, setSelectedAddress] = useState("");
+  const [selectedPayment, setSelectedPayment] = useState("COD");
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -58,11 +64,41 @@ export default function CheckoutPage() {
     setSubmitting(true);
     setError("");
     try {
-      const res = await checkout(selectedAddress, notes);
-      navigate(`/orders/${res.data.id}`);
+      // Step 1: Create order with selected payment method
+      const res = await checkout(selectedAddress, notes, selectedPayment);
+      const orderId = res.data.id;
+
+      // Step 2: If eSewa, initiate payment; otherwise redirect to order
+      if (selectedPayment === "eSewa") {
+        try {
+          const paymentRes = await initiatePayment(orderId, "eSewa");
+          const { payment_form_url, form_data } = paymentRes.data;
+
+          // Create a form and submit to eSewa
+          const form = document.createElement("form");
+          form.method = "POST";
+          form.action = payment_form_url;
+
+          Object.entries(form_data).forEach(([key, value]) => {
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = key;
+            input.value = value;
+            form.appendChild(input);
+          });
+
+          document.body.appendChild(form);
+          form.submit();
+        } catch (paymentErr) {
+          setError(paymentErr.response?.data?.error || "Failed to initiate payment");
+          setSubmitting(false);
+        }
+      } else {
+        // COD: Direct redirect to order
+        navigate(`/orders/${orderId}`);
+      }
     } catch (err) {
       setError(err.response?.data?.error || "Checkout failed. Please try again.");
-    } finally {
       setSubmitting(false);
     }
   };
@@ -99,8 +135,8 @@ export default function CheckoutPage() {
       <div className="checkout-progress" style={{ marginBottom: 28 }}>
         {STEPS.map((step, i) => {
           const Icon = step.icon;
-          const isDone = i < 1;
-          const isActive = i === 1;
+          const isDone = i < 2;
+          const isActive = i === 2;
           return (
             <div key={step.label} className="checkout-step-item" style={{ display: "flex", alignItems: "center" }}>
               {i > 0 && (
@@ -234,6 +270,38 @@ export default function CheckoutPage() {
             />
           </div>
 
+          {/* Payment Method */}
+          <div className="checkout-section">
+            <h2>
+              <CreditCard size={17} weight="duotone" style={{ color: "var(--p)" }} />
+              Payment Method
+            </h2>
+            <div style={{ display: "grid", gap: 10 }}>
+              {PAYMENT_METHODS.map((method) => (
+                <label key={method.id} className={`payment-radio ${selectedPayment === method.id ? "selected" : ""}`}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "14px", border: "1px solid var(--border)",
+                    borderRadius: "var(--r-md)", cursor: "pointer", transition: "all 0.2s",
+                    backgroundColor: selectedPayment === method.id ? "var(--s2)" : "transparent",
+                    borderColor: selectedPayment === method.id ? "var(--p)" : "var(--border)",
+                  }}>
+                  <input
+                    type="radio"
+                    name="payment"
+                    value={method.id}
+                    checked={selectedPayment === method.id}
+                    onChange={() => setSelectedPayment(method.id)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, color: "var(--txt)" }}>{method.name}</div>
+                    <div style={{ fontSize: "0.875rem", color: "var(--txt-m)" }}>{method.description}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
         </div>
 
         {/* Right: sticky summary */}
@@ -271,19 +339,28 @@ export default function CheckoutPage() {
               <span>Rs {cart.total_price}</span>
             </div>
 
-            <div className="checkout-cod-note">
-              <CurrencyDollar size={16} weight="fill" />
-              Cash on Delivery (COD)
+            <div className="checkout-payment-note" style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "12px", borderRadius: "var(--r-sm)",
+              backgroundColor: selectedPayment === "eSewa" ? "#e0e7ff" : "var(--s2)",
+              color: selectedPayment === "eSewa" ? "#4c1d95" : "var(--txt-m)", fontSize: "0.875rem", marginTop: 12
+            }}>
+              {selectedPayment === "eSewa" ? (
+                <><CreditCard size={16} weight="fill" /> Secure payment via eSewa</>
+              ) : (
+                <><CurrencyDollar size={16} weight="fill" /> Cash on Delivery (COD)</>
+              )}
             </div>
 
             <button
               className="btn btn-primary btn-block btn-lg"
               onClick={handleSubmit}
               disabled={submitting}
-              style={{ marginTop: 4 }}
+              style={{ marginTop: 12 }}
             >
               {submitting ? (
-                <><div className="loader-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Placing Order…</>
+                <><div className="loader-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Processing…</>
+              ) : selectedPayment === "eSewa" ? (
+                "Proceed to Payment"
               ) : (
                 "Place Order"
               )}

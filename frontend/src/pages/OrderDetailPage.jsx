@@ -9,6 +9,7 @@ import {
 const STEPS = [
   { key: "Order Placed",     icon: Package,      label: "Order Placed",      sub: "We received your order" },
   { key: "Preparing",        icon: Fire,         label: "Preparing",         sub: "Kitchen is on it" },
+  { key: "Ready",            icon: CheckCircle,  label: "Ready",             sub: "Order is ready!" },
   { key: "Out for Delivery", icon: Truck,        label: "Out for Delivery",  sub: "On the way to you" },
   { key: "Delivered",        icon: CheckCircle,  label: "Delivered",         sub: "Enjoy your meal! 🎉" },
 ];
@@ -16,6 +17,7 @@ const STEPS = [
 const STATUS_BADGE = {
   "Order Placed":     "badge-warning",
   Preparing:          "badge-info",
+  Ready:              "badge-secondary",
   "Out for Delivery": "badge-primary",
   Delivered:          "badge-success",
   Cancelled:          "badge-danger",
@@ -23,8 +25,7 @@ const STATUS_BADGE = {
 
 const STATUS_MESSAGES = {
   "Order Placed":     "Your order is confirmed and waiting for the kitchen to pick it up.",
-  Preparing:          "Your food is being freshly prepared by our kitchen team.",
-  "Out for Delivery": "Your order is on its way! Get ready to enjoy your meal.",
+  Preparing:          "Your food is being freshly prepared by our kitchen team.",  Ready:              "Your order is ready! Pick it up or wait for delivery.",  "Out for Delivery": "Your order is on its way! Get ready to enjoy your meal.",
   Delivered:          "Your order was delivered successfully. Bon appétit!",
 };
 
@@ -64,9 +65,9 @@ export default function OrderDetailPage() {
   const currentStep = STEPS.findIndex((s) => s.key === order?.status);
   const isCancelled = order?.status === "Cancelled";
   const isDelivered = order?.status === "Delivered";
-  const canCancel   = order?.status === "Order Placed";
+  const canCancel   = order?.status === "Order Placed" || order?.status === "Preparing";
   const progressPct = !isCancelled && currentStep >= 0
-    ? Math.round((currentStep / (STEPS.length - 1)) * 100)
+    ? Math.round(((currentStep - 1) / (STEPS.length - 1)) * 100)
     : 0;
 
   if (loading) {

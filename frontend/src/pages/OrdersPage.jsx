@@ -6,12 +6,13 @@ import { ClipboardText, ArrowRight, ForkKnife, Clock, CurrencyDollar } from "@ph
 const STATUS_CONFIG = {
   "Order Placed":     { badge: "badge-warning",  label: "Placed",      emoji: "📋", step: 1 },
   Preparing:          { badge: "badge-info",     label: "Preparing",   emoji: "👨‍🍳", step: 2 },
-  "Out for Delivery": { badge: "badge-primary",  label: "On the Way",  emoji: "🛵", step: 3 },
-  Delivered:          { badge: "badge-success",  label: "Delivered",   emoji: "✅", step: 4 },
+  Ready:              { badge: "badge-secondary", label: "Ready",       emoji: "✨", step: 3 },
+  "Out for Delivery": { badge: "badge-primary",  label: "On the Way",  emoji: "🛵", step: 4 },
+  Delivered:          { badge: "badge-success",  label: "Delivered",   emoji: "✅", step: 5 },
   Cancelled:          { badge: "badge-danger",   label: "Cancelled",   emoji: "❌", step: 0 },
 };
 
-const FILTERS = ["All", "Order Placed", "Preparing", "Out for Delivery", "Delivered", "Cancelled"];
+const FILTERS = ["All", "Order Placed", "Preparing", "Ready", "Out for Delivery", "Delivered", "Cancelled"];
 
 function OrderProgressBar({ status }) {
   const cfg = STATUS_CONFIG[status];

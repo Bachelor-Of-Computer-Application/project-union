@@ -7,6 +7,7 @@ class Order(models.Model):
     STATUS_CHOICES = [
         ("Order Placed", "Order Placed"),
         ("Preparing", "Preparing"),
+        ("Ready", "Ready"),
         ("Out for Delivery", "Out for Delivery"),
         ("Delivered", "Delivered"),
         ("Cancelled", "Cancelled"),
@@ -14,11 +15,13 @@ class Order(models.Model):
 
     PAYMENT_METHODS = [
         ("COD", "Cash on Delivery"),
+        ("eSewa", "eSewa"),
     ]
 
     PAYMENT_STATUS = [
         ("Pending", "Pending"),
         ("Paid", "Paid"),
+        ("Failed", "Failed"),
     ]
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
@@ -28,6 +31,8 @@ class Order(models.Model):
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_METHODS, default="COD")
     payment_status = models.CharField(max_length=20, choices=PAYMENT_STATUS, default="Pending")
+    transaction_uuid = models.CharField(max_length=100, blank=True, null=True, unique=True, help_text="Unique transaction ID from eSewa")
+    transaction_code = models.CharField(max_length=100, blank=True, null=True, help_text="Transaction code returned by eSewa")
     notes = models.TextField(blank=True, default="")
 
     def calculate_total(self):

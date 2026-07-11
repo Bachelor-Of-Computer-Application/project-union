@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from django.db.models import F, Q
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
@@ -11,16 +11,19 @@ from rest_framework.views import APIView
 
 from accounts.models import Address, Customer
 from config.permissions import IsAdminUser
-from inventory.models import InventoryItem
-from menu.models import MenuItem, MenuItemRecipe
+from menu.models import MenuItem
 
 from .models import Cart, CartItem, Order, OrderItem
+from .payment_service import eSewaPaymentService
 from .serializers import (
     CartItemWriteSerializer,
     CartSerializer,
     OrderCreateSerializer,
     OrderSerializer,
     OrderStatusUpdateSerializer,
+    PaymentInitiateSerializer,
+    PaymentCallbackSerializer,
+    PaymentVerifySerializer,
 )
 
 
@@ -38,31 +41,8 @@ def get_customer_or_404(user):
 
 
 def update_inventory_for_order(order, *, deduct: bool):
-    """
-    Adjust inventory quantities based on an order's recipe links.
-
-    deduct=True  → subtract stock   (order → Preparing)
-    deduct=False → restore stock    (Preparing order → Cancelled)
-
-    Re-evaluates availability on every affected MenuItem afterwards.
-    """
-    affected_menu_items = set()
-
-    for order_item in order.items.select_related("menu_item").all():
-        recipes = (
-            MenuItemRecipe.objects
-            .filter(menu_item=order_item.menu_item)
-            .select_related("inventory_item")
-        )
-        for recipe in recipes:
-            inv = recipe.inventory_item
-            needed = recipe.quantity_required * order_item.quantity
-            inv.quantity = max(inv.quantity - needed, 0) if deduct else inv.quantity + needed
-            inv.save(update_fields=["quantity"])
-            affected_menu_items.add(order_item.menu_item)
-
-    for menu_item in affected_menu_items:
-        menu_item.auto_availability()
+    """Inventory handling is disabled; this hook is kept for compatibility."""
+    return
 
 
 # ──────────────────────────────────────────────
@@ -169,6 +149,7 @@ class CheckoutAPIView(APIView):
         order = Order.objects.create(
             customer=customer,
             delivery_address=address,
+            payment_method=serializer.validated_data.get("payment_method", "COD"),
             notes=serializer.validated_data.get("notes", ""),
         )
 
@@ -225,8 +206,8 @@ class OrderDetailAPIView(generics.RetrieveAPIView):
 
 class OrderCancelAPIView(APIView):
     """
-    POST — Cancel an order that is still in "Order Placed" status.
-    Once the kitchen starts preparing it, cancellation is no longer allowed.
+    POST — Cancel an order that is still in "Order Placed" or "Preparing" status.
+    Once the order reaches "Ready" status, cancellation is no longer allowed.
     """
 
     permission_classes = [IsAuthenticated]
@@ -235,9 +216,9 @@ class OrderCancelAPIView(APIView):
         customer = get_customer_or_404(request.user)
         order = get_object_or_404(Order, pk=pk, customer=customer)
 
-        if order.status != "Order Placed":
+        if order.status not in ["Order Placed", "Preparing"]:
             return Response(
-                {"error": "Only orders with status 'Order Placed' can be cancelled."},
+                {"error": "Only orders with status 'Order Placed' or 'Preparing' can be cancelled."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -304,13 +285,7 @@ class AdminOrderListAPIView(generics.ListAPIView):
 
 
 class AdminOrderUpdateAPIView(generics.UpdateAPIView):
-    """
-    PATCH — Admin only: update order status and/or payment status.
-
-    Inventory side-effects:
-      Order Placed → Preparing   : deduct stock
-      Preparing    → Cancelled   : restore stock
-    """
+    """PATCH — Admin only: update order status and/or payment status."""
 
     queryset = Order.objects.all()
     serializer_class = OrderStatusUpdateSerializer
@@ -380,10 +355,193 @@ class DashboardAPIView(APIView):
             "out_for_delivery": Order.objects.filter(status="Out for Delivery").count(),
             "delivered_orders": Order.objects.filter(status="Delivered").count(),
             "paid_orders": Order.objects.filter(payment_status="Paid").count(),
-            "low_stock_items": InventoryItem.objects.filter(
-                quantity__lte=F("low_stock_limit")
-            ).count(),
             "total_revenue": float(total_revenue),
             "revenue_trend": revenue_trend,
             "recent_orders": OrderSerializer(recent_orders, many=True).data,
         })
+
+
+# ──────────────────────────────────────────────
+# Payment views
+# ──────────────────────────────────────────────
+
+class PaymentInitiateAPIView(APIView):
+    """
+    POST — Initiate eSewa payment for an order.
+    
+    Request:
+        {
+            "order_id": <order_id>,
+            "payment_method": "eSewa"
+        }
+    
+    Response:
+        {
+            "payment_form_url": "https://rc-epay.esewa.com.np/api/epay/main/v2/form",
+            "form_data": {
+                "amount": "1000.00",
+                "transaction_uuid": "...",
+                "product_code": "EPAYTEST",
+                ...
+            },
+            "transaction_uuid": "..."
+        }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        customer = get_customer_or_404(request.user)
+        
+        serializer = PaymentInitiateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        
+        order = get_object_or_404(Order, id=serializer.validated_data["order_id"], customer=customer)
+        
+        # Generate transaction UUID and update order
+        payment_service = eSewaPaymentService()
+        transaction_uuid = payment_service.generate_transaction_uuid()
+        
+        order.transaction_uuid = transaction_uuid
+        order.payment_method = "eSewa"
+        order.save(update_fields=["transaction_uuid", "payment_method"])
+        
+        # Prepare payment form data
+        form_data = payment_service.prepare_payment_form_data(
+            order_id=order.id,
+            amount=order.total_amount,
+            transaction_uuid=transaction_uuid,
+            customer_email=customer.user.email or "",
+            customer_phone=customer.phone or "",
+        )
+        
+        return Response({
+            "payment_form_url": payment_service.get_payment_form_url(),
+            "form_data": form_data,
+            "transaction_uuid": transaction_uuid,
+        }, status=status.HTTP_200_OK)
+
+
+class PaymentSuccessCallbackAPIView(APIView):
+    """
+    POST — eSewa success callback endpoint.
+    Verifies payment with eSewa and marks order as paid.
+    
+    Can be called from:
+    1. Frontend redirect after payment (may not have all data)
+    2. Backend verification endpoint
+    """
+    permission_classes = []  # Callback from eSewa, no auth required
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = PaymentCallbackSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        transaction_uuid = serializer.validated_data.get("transaction_uuid")
+        
+        # Find the order
+        order = get_object_or_404(Order, transaction_uuid=transaction_uuid)
+        
+        # Verify payment with eSewa
+        payment_service = eSewaPaymentService()
+        is_verified, response_data = payment_service.verify_payment(transaction_uuid)
+        
+        if is_verified:
+            # Payment is successful
+            order.payment_status = "Paid"
+            order.transaction_code = payment_service.extract_transaction_code(response_data)
+            order.save(update_fields=["payment_status", "transaction_code"])
+            
+            return Response({
+                "success": True,
+                "message": "Payment verified successfully",
+                "order": OrderSerializer(order).data,
+            }, status=status.HTTP_200_OK)
+        else:
+            # Payment verification failed
+            order.payment_status = "Failed"
+            order.save(update_fields=["payment_status"])
+            
+            return Response({
+                "success": False,
+                "message": "Payment verification failed",
+                "error": response_data.get("error", "Unknown error"),
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class PaymentFailureCallbackAPIView(APIView):
+    """
+    POST — eSewa failure callback endpoint.
+    Marks order payment as failed.
+    """
+    permission_classes = []  # Callback from eSewa, no auth required
+    authentication_classes = []
+
+    def post(self, request):
+        serializer = PaymentCallbackSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        transaction_uuid = serializer.validated_data.get("transaction_uuid")
+        
+        # Find the order
+        order = get_object_or_404(Order, transaction_uuid=transaction_uuid)
+        
+        # Mark as failed
+        order.payment_status = "Failed"
+        order.save(update_fields=["payment_status"])
+        
+        return Response({
+            "success": False,
+            "message": "Payment failed",
+            "order_id": order.id,
+        }, status=status.HTTP_200_OK)
+
+
+class PaymentVerifyAPIView(APIView):
+    """
+    GET — Verify payment status with eSewa.
+    
+    Query params:
+        ?transaction_uuid=<uuid>
+    
+    This endpoint can be called by frontend after user returns from eSewa
+    to verify if payment was successful.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        customer = get_customer_or_404(request.user)
+        transaction_uuid = request.query_params.get("transaction_uuid")
+        
+        if not transaction_uuid:
+            return Response(
+                {"error": "transaction_uuid query param required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Find order
+        order = get_object_or_404(Order, transaction_uuid=transaction_uuid, customer=customer)
+        
+        # Verify with eSewa
+        payment_service = eSewaPaymentService()
+        is_verified, response_data = payment_service.verify_payment(transaction_uuid)
+        
+        if is_verified:
+            # Update order if not already updated
+            if order.payment_status != "Paid":
+                order.payment_status = "Paid"
+                order.transaction_code = payment_service.extract_transaction_code(response_data)
+                order.save(update_fields=["payment_status", "transaction_code"])
+            
+            return Response({
+                "success": True,
+                "message": "Payment verified",
+                "payment_status": "Paid",
+                "order": OrderSerializer(order).data,
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                "success": False,
+                "message": "Payment not verified",
+                "payment_status": order.payment_status,
+            }, status=status.HTTP_400_BAD_REQUEST)

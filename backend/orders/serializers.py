@@ -68,12 +68,16 @@ class OrderSerializer(serializers.ModelSerializer):
             "total_amount",
             "payment_method",
             "payment_status",
+            "transaction_uuid",
+            "transaction_code",
             "notes",
             "items",
         ]
         extra_kwargs = {
             "customer": {"read_only": True},
             "total_amount": {"read_only": True},
+            "transaction_uuid": {"read_only": True},
+            "transaction_code": {"read_only": True},
         }
 
     def get_delivery_address_detail(self, obj):
@@ -89,6 +93,7 @@ class OrderSerializer(serializers.ModelSerializer):
 class OrderCreateSerializer(serializers.Serializer):
     delivery_address_id = serializers.IntegerField()
     notes = serializers.CharField(required=False, allow_blank=True)
+    payment_method = serializers.ChoiceField(choices=[("COD", "Cash on Delivery"), ("eSewa", "eSewa")], required=False, default="COD")
 
     def validate_delivery_address_id(self, value):
         from accounts.models import Address
@@ -96,6 +101,46 @@ class OrderCreateSerializer(serializers.Serializer):
         if not Address.objects.filter(id=value, customer__user=user).exists():
             raise serializers.ValidationError("Address not found.")
         return value
+
+
+# ──────────────────────────────────────────────
+# Payment serializers
+# ──────────────────────────────────────────────
+
+class PaymentInitiateSerializer(serializers.Serializer):
+    """
+    Initiate eSewa payment for an order.
+    
+    Request:
+        order_id: int - The order ID to pay for
+    
+    Response:
+        payment_form_url: str - URL to POST form to eSewa
+        form_data: dict - Form fields to submit to eSewa
+    """
+    order_id = serializers.IntegerField()
+
+    def validate_order_id(self, value):
+        user = self.context["request"].user
+        if not Order.objects.filter(id=value, customer__user__pk=user.pk).exists():
+            raise serializers.ValidationError("Order not found.")
+        return value
+
+
+class PaymentCallbackSerializer(serializers.Serializer):
+    """Handle payment callback from eSewa."""
+    transaction_uuid = serializers.CharField(max_length=100)
+    status = serializers.CharField(max_length=20)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    transaction_code = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    product_code = serializers.CharField(max_length=50, required=False)
+    signed_field_names = serializers.CharField(required=False, allow_blank=True)
+    signature = serializers.CharField(required=False, allow_blank=True)
+
+
+class PaymentVerifySerializer(serializers.Serializer):
+    """Verify payment status with eSewa."""
+    transaction_uuid = serializers.CharField(max_length=100)
 
 
 class OrderStatusUpdateSerializer(serializers.ModelSerializer):
