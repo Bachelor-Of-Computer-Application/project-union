@@ -14,6 +14,9 @@ const BREADCRUMBS = {
   "/profile":    ["Home", "My Profile"],
   "/admin":      ["Home", "Admin Panel"],
   "/restaurant": ["Home", "Restaurant Panel"],
+  "/delivery":   ["Home", "Delivery Dashboard"],
+  "/delivery/orders":  ["Home", "My Assigned Orders"],
+  "/delivery/profile": ["Home", "Delivery Profile"],
   "/login":      ["Home", "Sign In"],
   "/register":   ["Home", "Register"],
 };
@@ -99,12 +102,12 @@ export default function TopBar({ collapsed, onToggle }) {
           <span className="tb-notif-dot" />
         </button>
 
-        {/* User avatar → links to profile for customers, dashboard for admin */}
+        {/* User avatar → links to profile/dashboard */}
         {user ? (
           <Link
-            to={user.is_admin ? "/" : "/profile"}
+            to={user.is_admin ? "/" : user.is_delivery_man ? "/delivery/profile" : "/profile"}
             style={{ textDecoration: "none" }}
-            title={user.is_admin ? "Dashboard" : "My Profile"}
+            title={user.is_admin ? "Dashboard" : user.is_delivery_man ? "Delivery Profile" : "My Profile"}
           >
             <div className="tb-avatar">{initials}</div>
           </Link>

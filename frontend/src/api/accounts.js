@@ -38,3 +38,16 @@ export const adminToggleUserActive = (id, is_active) =>
 // ── Admin: Payments ───────────────────────────────────────────────────
 export const adminGetPayments = () =>
   client.get("/accounts/admin/payments/");
+// ── Admin: Delivery Men ─────────────────────────────────────────────
+
+export const adminGetDeliveryMen = () =>
+  client.get("/accounts/admin/delivery-men/");
+
+export const adminCreateDeliveryMan = (data) =>
+  client.post("/accounts/admin/delivery-men/", data);
+
+export const adminUpdateDeliveryMan = (id, data) =>
+  client.patch(`/accounts/admin/delivery-men/${id}/`, data);
+
+export const adminDeleteDeliveryMan = (id) =>
+  client.delete(`/accounts/admin/delivery-men/${id}/`);

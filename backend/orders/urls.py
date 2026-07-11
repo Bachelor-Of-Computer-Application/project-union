@@ -16,6 +16,8 @@ from .views import (
     PaymentSuccessCallbackAPIView,
     PaymentFailureCallbackAPIView,
     PaymentVerifyAPIView,
+    DeliveryDashboardAPIView,
+    DeliveryOrdersAPIView,
 )
 
 urlpatterns = [
@@ -46,4 +48,7 @@ urlpatterns = [
 
     # Dashboard
     path("dashboard/", DashboardAPIView.as_view(), name="dashboard"),
+    # Delivery Man
+path("delivery/dashboard/", DeliveryDashboardAPIView.as_view(), name="delivery-dashboard"),
+path("delivery/orders/", DeliveryOrdersAPIView.as_view(), name="delivery-orders"),
 ]

@@ -45,8 +45,8 @@ export default function Layout() {
           <Outlet />
         </main>
 
-        {/* Footer is shown only for customer-facing pages, not the admin/restaurant panels */}
-        {!isAdmin && <Footer />}
+        {/* Footer is shown only for customer-facing pages, not the admin/restaurant/delivery panels */}
+        {!isAdmin && !user?.is_delivery_man && <Footer />}
       </div>
     </div>
   );

@@ -12,11 +12,31 @@ export default function PaymentSuccessPage() {
 
   useEffect(() => {
     const verifyPaymentStatus = async () => {
-      const uuid = searchParams.get("transaction_uuid");
-      
+      // eSewa redirects to success_url?data=<base64-encoded-json>
+      // The encoded payload contains transaction_uuid (and other fields).
+      // We must decode it first before we can call our verify endpoint.
+      let uuid = null;
+
+      const rawData = searchParams.get("data");
+      if (rawData) {
+        try {
+          const decoded = JSON.parse(atob(rawData));
+          uuid = decoded.transaction_uuid ?? null;
+        } catch {
+          setStatus("error");
+          setError("Could not decode the payment response from eSewa. Please check your order status.");
+          return;
+        }
+      }
+
+      // Fallback: some older integrations pass transaction_uuid directly
+      if (!uuid) {
+        uuid = searchParams.get("transaction_uuid");
+      }
+
       if (!uuid) {
         setStatus("error");
-        setError("No transaction ID found. Please contact support.");
+        setError("No transaction ID found in the payment response. Please contact support.");
         return;
       }
 

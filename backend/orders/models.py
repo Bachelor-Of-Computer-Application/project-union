@@ -1,5 +1,5 @@
 from django.db import models
-from accounts.models import Customer, Address
+from accounts.models import Customer, Address, DeliveryMan
 from menu.models import MenuItem
 
 
@@ -26,6 +26,14 @@ class Order(models.Model):
 
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     delivery_address = models.ForeignKey(Address, on_delete=models.SET_NULL, null=True, blank=True)
+    assigned_to = models.ForeignKey(
+        DeliveryMan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_orders",
+        help_text="Delivery man assigned to deliver this order",
+    )
     order_date = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Order Placed")
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)

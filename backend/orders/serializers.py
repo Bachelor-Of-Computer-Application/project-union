@@ -54,6 +54,7 @@ class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     delivery_address_detail = serializers.SerializerMethodField()
+    assigned_to_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -63,6 +64,8 @@ class OrderSerializer(serializers.ModelSerializer):
             "customer_name",
             "delivery_address",
             "delivery_address_detail",
+            "assigned_to",
+            "assigned_to_name",
             "order_date",
             "status",
             "total_amount",
@@ -74,19 +77,25 @@ class OrderSerializer(serializers.ModelSerializer):
             "items",
         ]
         extra_kwargs = {
-            "customer": {"read_only": True},
-            "total_amount": {"read_only": True},
+            "customer":         {"read_only": True},
+            "total_amount":     {"read_only": True},
             "transaction_uuid": {"read_only": True},
             "transaction_code": {"read_only": True},
+            "assigned_to":      {"read_only": True},
         }
 
     def get_delivery_address_detail(self, obj):
         if obj.delivery_address:
             return {
-                "label": obj.delivery_address.label,
+                "label":        obj.delivery_address.label,
                 "full_address": obj.delivery_address.full_address,
-                "city": obj.delivery_address.city,
+                "city":         obj.delivery_address.city,
             }
+        return None
+
+    def get_assigned_to_name(self, obj):
+        if obj.assigned_to:
+            return obj.assigned_to.name
         return None
 
 
@@ -153,4 +162,17 @@ class OrderStatusUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "status": {"required": False},
             "payment_status": {"required": False},
+        }
+
+
+class AdminOrderStatusUpdateSerializer(serializers.ModelSerializer):
+    """Used by admin to update order status, payment status, and assign delivery man."""
+
+    class Meta:
+        model = Order
+        fields = ["status", "payment_status", "assigned_to"]
+        extra_kwargs = {
+            "status": {"required": False},
+            "payment_status": {"required": False},
+            "assigned_to": {"required": False, "allow_null": True},
         }

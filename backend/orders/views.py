@@ -21,6 +21,7 @@ from .serializers import (
     OrderCreateSerializer,
     OrderSerializer,
     OrderStatusUpdateSerializer,
+    AdminOrderStatusUpdateSerializer,
     PaymentInitiateSerializer,
     PaymentCallbackSerializer,
     PaymentVerifySerializer,
@@ -228,13 +229,19 @@ class OrderCancelAPIView(APIView):
 
 
 class OrderUpdateStatusAPIView(generics.UpdateAPIView):
-    """PATCH — Generic customer-facing status update (kept for backwards compat)."""
+    """PATCH — Status update for customer (their own orders) or delivery man (their assigned orders)."""
 
     serializer_class = OrderStatusUpdateSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        customer = get_customer_or_404(self.request.user)
+        user = self.request.user
+        try:
+            if hasattr(user, 'delivery_profile') and user.delivery_profile.is_active:
+                return Order.objects.filter(assigned_to=user.delivery_profile)
+        except Exception:
+            pass
+        customer = get_customer_or_404(user)
         return Order.objects.filter(customer=customer)
 
 
@@ -285,10 +292,10 @@ class AdminOrderListAPIView(generics.ListAPIView):
 
 
 class AdminOrderUpdateAPIView(generics.UpdateAPIView):
-    """PATCH — Admin only: update order status and/or payment status."""
+    """PATCH — Admin only: update order status, payment status, and delivery assignment."""
 
     queryset = Order.objects.all()
-    serializer_class = OrderStatusUpdateSerializer
+    serializer_class = AdminOrderStatusUpdateSerializer
     permission_classes = [IsAdminUser]
 
     def patch(self, request, *args, **kwargs):
@@ -442,16 +449,18 @@ class PaymentSuccessCallbackAPIView(APIView):
         # Find the order
         order = get_object_or_404(Order, transaction_uuid=transaction_uuid)
         
-        # Verify payment with eSewa
+        # Verify payment with eSewa (pass total_amount so the API can match the transaction)
         payment_service = eSewaPaymentService()
-        is_verified, response_data = payment_service.verify_payment(transaction_uuid)
-        
+        is_verified, response_data = payment_service.verify_payment(
+            transaction_uuid, total_amount=order.total_amount
+        )
+
         if is_verified:
             # Payment is successful
             order.payment_status = "Paid"
             order.transaction_code = payment_service.extract_transaction_code(response_data)
             order.save(update_fields=["payment_status", "transaction_code"])
-            
+
             return Response({
                 "success": True,
                 "message": "Payment verified successfully",
@@ -522,12 +531,14 @@ class PaymentVerifyAPIView(APIView):
         # Find order
         order = get_object_or_404(Order, transaction_uuid=transaction_uuid, customer=customer)
         
-        # Verify with eSewa
+        # Verify with eSewa (pass total_amount so the API can match the transaction)
         payment_service = eSewaPaymentService()
-        is_verified, response_data = payment_service.verify_payment(transaction_uuid)
-        
+        is_verified, response_data = payment_service.verify_payment(
+            transaction_uuid, total_amount=order.total_amount
+        )
+
         if is_verified:
-            # Update order if not already updated
+            # Update order if not already marked paid
             if order.payment_status != "Paid":
                 order.payment_status = "Paid"
                 order.transaction_code = payment_service.extract_transaction_code(response_data)
@@ -545,3 +556,63 @@ class PaymentVerifyAPIView(APIView):
                 "message": "Payment not verified",
                 "payment_status": order.payment_status,
             }, status=status.HTTP_400_BAD_REQUEST)
+            from accounts.models import DeliveryMan
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+
+class DeliveryDashboardAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            delivery_man = request.user.delivery_profile
+        except DeliveryMan.DoesNotExist:
+            return Response({"error": "You are not a delivery man."}, status=403)
+
+        orders = Order.objects.filter(assigned_to=delivery_man)
+
+        return Response({
+            "total_assigned": orders.count(),
+            "pending": orders.exclude(status="Delivered").count(),
+            "completed": orders.filter(status="Delivered").count(),
+        })
+
+
+class DeliveryOrdersAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            delivery_man = request.user.delivery_profile
+        except DeliveryMan.DoesNotExist:
+            return Response({"error": "You are not a delivery man."}, status=403)
+
+        orders = Order.objects.filter(
+            assigned_to=delivery_man
+        ).select_related(
+            "customer",
+            "delivery_address"
+        ).prefetch_related("items__menu_item")
+
+        data = []
+
+        for order in orders:
+            data.append({
+                "id": order.id,
+                "customer": order.customer.name,
+                "phone": order.customer.phone,
+                "address": order.delivery_address.full_address if order.delivery_address else "",
+                "items": [
+                    {
+                        "name": item.menu_item.name,
+                        "quantity": item.quantity,
+                    }
+                    for item in order.items.all()
+                ],
+                "total": order.total_amount,
+                "status": order.status,
+            })
+
+        return Response(data)

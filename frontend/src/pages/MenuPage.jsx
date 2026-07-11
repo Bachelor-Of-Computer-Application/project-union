@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { addToCart } from "../api/orders";
-import { getMenuCategories } from "../api/menu";
+import { getMenuFull } from "../api/menu";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -8,48 +8,84 @@ import {
   X, Clock, CheckCircle,
 } from "@phosphor-icons/react";
 
-const CATEGORY_EMOJIS = {
-  "Biryani": "🍛", "Pizza": "🍕", "Burger": "🍔", "Noodles": "🍜",
-  "Chicken": "🍗", "Drinks": "🥤", "Beverages": "🥤", "Snacks": "🍟",
-  "Desserts": "🍮", "Rice": "🍚", "Bread": "🫓", "Salad": "🥗",
-  "Soup": "🍲", "Seafood": "🦐", "Vegetarian": "🥦", "Mutton": "🍖",
-  "Buff": "🥩", "Momos": "🥟", "Sandwich": "🥪",
+// ── emoji map ──────────────────────────────────────────────────────────────
+const MAIN_CAT_EMOJI = {
+  Food:      "🍽️",
+  Drinks:    "🥤",
+  Snacks:    "🍟",
+  Desserts:  "🍰",
+  Beverages: "☕",
+  Others:    "🛒",
 };
 
-function getCatEmoji(name = "") {
-  for (const [key, emoji] of Object.entries(CATEGORY_EMOJIS)) {
-    if (name.toLowerCase().includes(key.toLowerCase())) return emoji;
-  }
-  return "🍽️";
+const SECTION_EMOJI = {
+  Momo:          "🥟",
+  Pizza:         "🍕",
+  Burger:        "🍔",
+  Chowmein:      "🍜",
+  Biryani:       "🍛",
+  "Hot Wings":   "🍗",
+  Noodles:       "🍜",
+  "Soft Drinks": "🥤",
+  Juice:         "🍹",
+  Coffee:        "☕",
+  Lassi:         "🥛",
+  Fries:         "🍟",
+  Sandwich:      "🥪",
+  Sausage:       "🌭",
+  "Spring Roll": "🌯",
+  Tea:           "🫖",
+  "Hot Chocolate":"🍫",
+  Milkshake:     "🥤",
+  "Ice Cream":   "🍦",
+  Cake:          "🎂",
+};
+
+function mainEmoji(name = "") {
+  return MAIN_CAT_EMOJI[name] ?? "🍽️";
+}
+function secEmoji(name = "") {
+  return SECTION_EMOJI[name] ?? "🍴";
 }
 
+// ── component ──────────────────────────────────────────────────────────────
+
 export default function MenuPage() {
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState("all");
-  const [toast, setToast] = useState(null);
-  const [addingId, setAddingId] = useState(null);
-  const { isAuthenticated, user } = useAuth();
-  const navigate = useNavigate();
+  const [tree, setTree]               = useState([]);   // full MainCategory[] tree
+  const [loading, setLoading]         = useState(true);
+  const [search, setSearch]           = useState("");
+  const [activeMain, setActiveMain]   = useState(null); // MainCategory id
+  const [activeSection, setActiveSection] = useState(null); // MenuSection id
+  const [toast, setToast]             = useState(null);
+  const [addingId, setAddingId]       = useState(null);
+  const { isAuthenticated, user }     = useAuth();
+  const navigate                      = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Populate search from URL query param (set by TopBar search)
+  // Pick up ?search= from TopBar
   useEffect(() => {
     const q = searchParams.get("search");
     if (q) {
       setSearch(q);
-      // Clear the query param after picking it up so the URL stays clean
       setSearchParams({}, { replace: true });
     }
   }, [searchParams]);
 
+  // Load full tree once
   useEffect(() => {
-    getMenuCategories()
-      .then((res) => setCategories(res.data))
+    getMenuFull()
+      .then((res) => {
+        setTree(res.data);
+        if (res.data.length > 0) setActiveMain(res.data[0].id);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
+
+  // When activeMain changes, default to "all sections" (null)
+  useEffect(() => {
+    setActiveSection(null);
+  }, [activeMain]);
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
@@ -73,39 +109,77 @@ export default function MenuPage() {
     }
   };
 
-  const filteredCategories = categories
-    .filter((cat) => activeCategory === "all" || cat.id === activeCategory)
-    .map((cat) => ({
-      ...cat,
-      items: cat.items.filter(
-        (item) =>
-          item.name.toLowerCase().includes(search.toLowerCase()) ||
-          (item.description || "").toLowerCase().includes(search.toLowerCase())
-      ),
-    }))
-    .filter((cat) => cat.items.length > 0);
+  // ── derived data ─────────────────────────────────────────────────────────
 
-  const totalItems = categories.reduce((sum, c) => sum + c.items.length, 0);
+  // Active MainCategory object
+  const activeCat = useMemo(
+    () => tree.find((mc) => mc.id === activeMain) ?? null,
+    [tree, activeMain]
+  );
+
+  // Sections of active MainCategory
+  const sections = useMemo(
+    () => activeCat?.sections ?? [],
+    [activeCat]
+  );
+
+  // Items to display — filtered by section + search
+  const displayedSections = useMemo(() => {
+    if (!activeCat) return [];
+
+    const src = activeSection
+      ? sections.filter((s) => s.id === activeSection)
+      : sections;
+
+    return src
+      .map((sec) => ({
+        ...sec,
+        items: sec.items.filter((item) => {
+          if (!search) return true;
+          const q = search.toLowerCase();
+          return (
+            item.name.toLowerCase().includes(q) ||
+            (item.description ?? "").toLowerCase().includes(q)
+          );
+        }),
+      }))
+      .filter((sec) => sec.items.length > 0);
+  }, [activeCat, sections, activeSection, search]);
+
+  // Totals
+  const totalItems = useMemo(
+    () => tree.reduce((sum, mc) => sum + mc.sections.reduce((s2, sec) => s2 + sec.items.length, 0), 0),
+    [tree]
+  );
+  const activeCatItemCount = useMemo(
+    () => sections.reduce((sum, sec) => sum + sec.items.length, 0),
+    [sections]
+  );
+
+  // ── render ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="page-loader">
         <div className="loader-spinner" />
-        Loading menu...
+        Loading menu…
       </div>
     );
   }
 
   return (
     <div className="menu-page">
+
+      {/* Toast */}
       {toast && (
-        <div className={`alert alert-${toast.type} toast`} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {toast.type === "success" ? <CheckCircle size={16} weight="fill" /> : null}
+        <div className={`alert alert-${toast.type} toast`}
+          style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {toast.type === "success" && <CheckCircle size={16} weight="fill" />}
           {toast.msg}
         </div>
       )}
 
-      {/* Hero Banner */}
+      {/* Hero */}
       <div className="menu-hero">
         <div className="menu-hero-inner">
           <div className="menu-hero-text">
@@ -117,23 +191,14 @@ export default function MenuPage() {
             <p>Fresh ingredients, bold flavors — ready in 25–35 minutes</p>
           </div>
           <div className="menu-hero-stats">
-            <div className="menu-hero-stat">
-              <strong>{totalItems}</strong>
-              <span>Dishes</span>
-            </div>
-            <div className="menu-hero-stat">
-              <strong>{categories.length}</strong>
-              <span>Categories</span>
-            </div>
-            <div className="menu-hero-stat">
-              <strong>Free</strong>
-              <span>Delivery</span>
-            </div>
+            <div className="menu-hero-stat"><strong>{totalItems}</strong><span>Dishes</span></div>
+            <div className="menu-hero-stat"><strong>{tree.length}</strong><span>Categories</span></div>
+            <div className="menu-hero-stat"><strong>Free</strong><span>Delivery</span></div>
           </div>
         </div>
       </div>
 
-      {/* Search + toolbar */}
+      {/* Search bar */}
       <div className="menu-toolbar">
         <div className="menu-search-bar" style={{ maxWidth: 520, flex: 1 }}>
           <MagnifyingGlass size={15} color="var(--txt-m)" />
@@ -157,85 +222,112 @@ export default function MenuPage() {
         </div>
       </div>
 
-      {/* Horizontal category pills */}
+      {/* ── LEVEL 1: MainCategory tabs (horizontal scroll) ─────────────── */}
       <div className="menu-cats-scroll-wrap">
         <div className="menu-cats-scroll">
-          <button
-            className={`menu-cat-pill${activeCategory === "all" ? " active" : ""}`}
-            onClick={() => setActiveCategory("all")}
-          >
-            🍽️ All Items
-            <span className="menu-cat-pill-count">{totalItems}</span>
-          </button>
-          {categories.map((cat) => (
-            <button
-              key={cat.id}
-              className={`menu-cat-pill${activeCategory === cat.id ? " active" : ""}`}
-              onClick={() => setActiveCategory(activeCategory === cat.id ? "all" : cat.id)}
-            >
-              {getCatEmoji(cat.name)} {cat.name}
-              <span className="menu-cat-pill-count">{cat.items.length}</span>
-            </button>
-          ))}
+          {tree.map((mc) => {
+            const count = mc.sections.reduce((s, sec) => s + sec.items.length, 0);
+            return (
+              <button
+                key={mc.id}
+                className={`menu-cat-pill${activeMain === mc.id ? " active" : ""}`}
+                onClick={() => setActiveMain(mc.id)}
+              >
+                {mainEmoji(mc.name)} {mc.name}
+                <span className="menu-cat-pill-count">{count}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* ERP two-panel layout for wider screens */}
+      {/* ── Two-panel layout ───────────────────────────────────────────── */}
       <div className="menu-layout">
-        {/* Category sidebar (desktop) */}
+
+        {/* LEVEL 2: MenuSection sidebar (desktop) + pills (mobile) */}
         <div className="menu-cat-panel">
-          <div className="menu-cat-panel-header">Categories</div>
+          <div className="menu-cat-panel-header">
+            {activeCat ? `${mainEmoji(activeCat.name)} ${activeCat.name}` : "Sections"}
+          </div>
+
+          {/* "All" entry */}
           <button
-            className={`menu-cat-item${activeCategory === "all" ? " active" : ""}`}
-            onClick={() => setActiveCategory("all")}
+            className={`menu-cat-item${activeSection === null ? " active" : ""}`}
+            onClick={() => setActiveSection(null)}
           >
-            All Items
-            <span className="menu-cat-count">{totalItems}</span>
+            All {activeCat?.name ?? "Items"}
+            <span className="menu-cat-count">{activeCatItemCount}</span>
           </button>
-          {categories.map((cat) => (
+
+          {sections.map((sec) => (
             <button
-              key={cat.id}
-              className={`menu-cat-item${activeCategory === cat.id ? " active" : ""}`}
-              onClick={() => setActiveCategory(activeCategory === cat.id ? "all" : cat.id)}
+              key={sec.id}
+              className={`menu-cat-item${activeSection === sec.id ? " active" : ""}`}
+              onClick={() => setActiveSection(activeSection === sec.id ? null : sec.id)}
             >
-              <span style={{ marginRight: 6 }}>{getCatEmoji(cat.name)}</span>
-              {cat.name}
-              <span className="menu-cat-count">{cat.items.length}</span>
+              <span style={{ marginRight: 6 }}>{secEmoji(sec.name)}</span>
+              {sec.name}
+              <span className="menu-cat-count">{sec.items.length}</span>
             </button>
           ))}
         </div>
 
-        {/* Items grid */}
+        {/* ── LEVEL 3: MenuItem grid ─────────────────────────────────── */}
         <div className="menu-grid-area">
-          {filteredCategories.length === 0 ? (
+
+          {/* Section pills — visible on mobile above the grid */}
+          {sections.length > 1 && (
+            <div className="menu-cats-scroll-wrap" style={{ marginBottom: 16 }}>
+              <div className="menu-cats-scroll">
+                <button
+                  className={`menu-cat-pill${activeSection === null ? " active" : ""}`}
+                  onClick={() => setActiveSection(null)}
+                  style={{ fontSize: "0.8rem" }}
+                >
+                  All
+                </button>
+                {sections.map((sec) => (
+                  <button
+                    key={sec.id}
+                    className={`menu-cat-pill${activeSection === sec.id ? " active" : ""}`}
+                    onClick={() => setActiveSection(activeSection === sec.id ? null : sec.id)}
+                    style={{ fontSize: "0.8rem" }}
+                  >
+                    {secEmoji(sec.name)} {sec.name}
+                    <span className="menu-cat-pill-count">{sec.items.length}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {displayedSections.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon"><ForkKnife size={28} /></div>
               <p>No items found{search ? ` for "${search}"` : ""}.</p>
               {search && (
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setSearch("")}
-                  style={{ marginTop: 12 }}
-                >
+                <button className="btn btn-outline btn-sm"
+                  onClick={() => setSearch("")} style={{ marginTop: 12 }}>
                   Clear search
                 </button>
               )}
             </div>
           ) : (
-            filteredCategories.map((cat) => (
-              <section key={cat.id} className="menu-category" id={`cat-${cat.id}`}>
+            displayedSections.map((sec) => (
+              <section key={sec.id} className="menu-category" id={`sec-${sec.id}`}>
                 <h2 className="category-title">
-                  <span style={{ fontSize: "1.1rem" }}>{getCatEmoji(cat.name)}</span>
-                  {cat.name}
+                  <span style={{ fontSize: "1.1rem" }}>{secEmoji(sec.name)}</span>
+                  {sec.name}
                   <span style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--txt-m)", marginLeft: 4 }}>
-                    ({cat.items.length})
+                    ({sec.items.length})
                   </span>
                 </h2>
+
                 <div className="menu-grid">
-                  {cat.items.map((item) => {
+                  {sec.items.map((item) => {
                     const isPopular = item.rating >= 4.2;
-                    const isNew = !item.rating || item.rating === 0;
-                    const isAdding = addingId === item.id;
+                    const isNew     = !item.rating || item.rating === 0;
+                    const isAdding  = addingId === item.id;
 
                     return (
                       <div
@@ -268,7 +360,8 @@ export default function MenuPage() {
                         <div className="menu-card-body">
                           <h3>{item.name}</h3>
                           {!item.is_available && (
-                            <span className="badge badge-secondary" style={{ marginBottom: 6, fontSize: "0.6875rem" }}>
+                            <span className="badge badge-secondary"
+                              style={{ marginBottom: 6, fontSize: "0.6875rem" }}>
                               Unavailable
                             </span>
                           )}
@@ -292,7 +385,8 @@ export default function MenuPage() {
                           >
                             {isAdding ? (
                               <>
-                                <div className="loader-spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                                <div className="loader-spinner"
+                                  style={{ width: 14, height: 14, borderWidth: 2 }} />
                                 Adding…
                               </>
                             ) : item.is_available ? (

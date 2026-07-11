@@ -6,13 +6,16 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
 from config.permissions import IsAdminUser
-from .models import Address, Customer
+from .models import Address, Customer, DeliveryMan
 from .serializers import (
     AddressSerializer,
     PasswordChangeSerializer,
     ProfileUpdateSerializer,
     RegisterSerializer,
     UserSerializer,
+    DeliveryManSerializer,
+    DeliveryManCreateSerializer,
+    DeliveryManUpdateSerializer,
 )
 
 
@@ -37,28 +40,55 @@ class UserDetailAPIView(APIView):
 class ProfileUpdateAPIView(APIView):
     """
     PATCH — Update the authenticated user's name, phone, and/or email.
-    The Customer record is updated; the Django User email is kept in sync.
+    The Customer or DeliveryMan record is updated; the Django User email is kept in sync.
     """
 
     permission_classes = [IsAuthenticated]
 
     def patch(self, request):
-        serializer = ProfileUpdateSerializer(data=request.data, context={"request": request})
-        serializer.is_valid(raise_exception=True)
-        data = serializer.validated_data
+        user = request.user
+        
+        # Check if the user is a delivery man
+        is_delivery = hasattr(user, 'delivery_profile') and user.delivery_profile is not None
+        
+        if is_delivery:
+            delivery_man = user.delivery_profile
+            data = request.data
+            
+            if "name" in data:
+                delivery_man.name = data["name"]
+            if "phone" in data:
+                delivery_man.phone = data["phone"]
+            if "vehicle_number" in data:
+                delivery_man.vehicle_number = data["vehicle_number"]
+            
+            if "email" in data:
+                email = data["email"]
+                if email and User.objects.exclude(pk=user.pk).filter(email=email).exists():
+                    return Response({"email": ["This email is already in use."]}, status=400)
+                user.email = email
+                user.save(update_fields=["email"])
+                
+            delivery_man.save()
+            return Response(UserSerializer(user).data)
+            
+        else:
+            serializer = ProfileUpdateSerializer(data=request.data, context={"request": request})
+            serializer.is_valid(raise_exception=True)
+            data = serializer.validated_data
 
-        customer = get_object_or_404(Customer, user=request.user)
-        if "name" in data:
-            customer.name = data["name"]
-        if "phone" in data:
-            customer.phone = data["phone"]
-        if "email" in data:
-            customer.email = data["email"]
-            request.user.email = data["email"]
-            request.user.save(update_fields=["email"])
-        customer.save()
+            customer = get_object_or_404(Customer, user=request.user)
+            if "name" in data:
+                customer.name = data["name"]
+            if "phone" in data:
+                customer.phone = data["phone"]
+            if "email" in data:
+                customer.email = data["email"]
+                request.user.email = data["email"]
+                request.user.save(update_fields=["email"])
+            customer.save()
 
-        return Response(UserSerializer(request.user).data)
+            return Response(UserSerializer(request.user).data)
 
 
 class PasswordChangeAPIView(APIView):
@@ -161,3 +191,52 @@ class AdminPaymentsAPIView(APIView):
             )
         )
         return Response(list(payments))
+
+
+class AdminDeliveryManListCreateAPIView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        delivery_men = DeliveryMan.objects.all().order_by("-created_at")
+        serializer = DeliveryManSerializer(delivery_men, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = DeliveryManCreateSerializer(data=request.data)
+
+        if serializer.is_valid():
+            delivery_man = serializer.save()
+            return Response(
+                DeliveryManSerializer(delivery_man).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AdminDeliveryManDetailAPIView(APIView):
+    permission_classes = [IsAdminUser]
+
+    def get(self, request, pk):
+        delivery_man = get_object_or_404(DeliveryMan, pk=pk)
+        return Response(DeliveryManSerializer(delivery_man).data)
+
+    def patch(self, request, pk):
+        delivery_man = get_object_or_404(DeliveryMan, pk=pk)
+
+        serializer = DeliveryManUpdateSerializer(
+            delivery_man,
+            data=request.data,
+            partial=True,
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(DeliveryManSerializer(delivery_man).data)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        delivery_man = get_object_or_404(DeliveryMan, pk=pk)
+        delivery_man.user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

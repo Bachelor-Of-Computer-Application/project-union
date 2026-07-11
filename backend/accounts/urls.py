@@ -9,6 +9,8 @@ from .views import (
     AdminUserListAPIView,
     AdminUserDetailAPIView,
     AdminPaymentsAPIView,
+    AdminDeliveryManListCreateAPIView,
+    AdminDeliveryManDetailAPIView,
 )
 
 urlpatterns = [
@@ -21,4 +23,16 @@ urlpatterns = [
     path("admin/users/", AdminUserListAPIView.as_view(), name="admin-users"),
     path("admin/users/<int:user_id>/", AdminUserDetailAPIView.as_view(), name="admin-user-detail"),
     path("admin/payments/", AdminPaymentsAPIView.as_view(), name="admin-payments"),
+
+        path(
+        "admin/delivery-men/",
+        AdminDeliveryManListCreateAPIView.as_view(),
+        name="admin-delivery-men",
+    ),
+
+    path(
+        "admin/delivery-men/<int:pk>/",
+        AdminDeliveryManDetailAPIView.as_view(),
+        name="admin-delivery-man-detail",
+    ),
 ]

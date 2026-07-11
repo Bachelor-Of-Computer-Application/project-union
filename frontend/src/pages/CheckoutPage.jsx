@@ -58,7 +58,9 @@ export default function CheckoutPage() {
 
   const handleSubmit = async () => {
     if (!selectedAddress) {
-      setError("Please select a delivery address");
+      setError("Please select or add a delivery address before placing your order.");
+      // Scroll to top so the error banner and address section are visible
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     setSubmitting(true);
@@ -98,7 +100,13 @@ export default function CheckoutPage() {
         navigate(`/orders/${orderId}`);
       }
     } catch (err) {
-      setError(err.response?.data?.error || "Checkout failed. Please try again.");
+      const data = err.response?.data;
+      const msg =
+        typeof data === "string" ? data :
+        data?.error || data?.detail ||
+        (typeof data === "object" ? Object.values(data).flat().join(" ") : null) ||
+        "Checkout failed. Please try again.";
+      setError(msg);
       setSubmitting(false);
     }
   };
@@ -354,8 +362,8 @@ export default function CheckoutPage() {
             <button
               className="btn btn-primary btn-block btn-lg"
               onClick={handleSubmit}
-              disabled={submitting}
-              style={{ marginTop: 12 }}
+              disabled={submitting || !selectedAddress}
+              style={{ marginTop: 12, opacity: !selectedAddress ? 0.6 : 1 }}
             >
               {submitting ? (
                 <><div className="loader-spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Processing…</>
@@ -365,6 +373,12 @@ export default function CheckoutPage() {
                 "Place Order"
               )}
             </button>
+
+            {!selectedAddress && (
+              <p style={{ textAlign: "center", fontSize: "0.8rem", color: "var(--danger)", marginTop: 8 }}>
+                ⚠ Add a delivery address to continue
+              </p>
+            )}
 
             <p style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--txt-m)", marginTop: 10 }}>
               By placing the order you agree to our terms

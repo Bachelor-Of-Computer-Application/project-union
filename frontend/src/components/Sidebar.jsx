@@ -2,7 +2,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
   ForkKnife, House, ClipboardText, Package,
-  ShoppingCart, Users, ChartBar, Phone,
+  ShoppingCart, Users, ChartBar,
   SignOut, CaretDoubleLeft, CaretDoubleRight,
   SignIn, UserPlus, Fire, UserCircle,
 } from "@phosphor-icons/react";
@@ -39,8 +39,6 @@ const CUSTOMER_NAV = [
     items: [
       { label: "Home",         icon: House,         path: "/" },
       { label: "Browse Menu",  icon: ForkKnife,     path: "/menu" },
-      { label: "About Us",     icon: Users,         path: "/about" },
-      { label: "Contact",      icon: Phone,         path: "/contact" },
     ],
   },
   {
@@ -49,6 +47,27 @@ const CUSTOMER_NAV = [
       { label: "Cart",         icon: ShoppingCart,  path: "/cart" },
       { label: "My Orders",    icon: ClipboardText, path: "/orders" },
       { label: "My Profile",   icon: UserCircle,    path: "/profile" },
+    ],
+  },
+];
+
+const DELIVERY_NAV = [
+  {
+    section: "Overview",
+    items: [
+      { label: "Dashboard",   icon: House,         path: "/delivery" },
+    ],
+  },
+  {
+    section: "Operations",
+    items: [
+      { label: "My Orders",   icon: ClipboardText, path: "/delivery/orders" },
+    ],
+  },
+  {
+    section: "Management",
+    items: [
+      { label: "My Profile",  icon: UserCircle,    path: "/delivery/profile" },
     ],
   },
 ];
@@ -85,7 +104,7 @@ export default function Sidebar({ collapsed, onToggle }) {
   const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
-    if (!isAuthenticated || user?.is_admin) return;
+    if (!isAuthenticated || user?.is_admin || user?.is_delivery_man) return;
     getCart()
       .then((res) => {
         const count = res.data?.items?.reduce((sum, i) => sum + i.quantity, 0) || 0;
@@ -96,6 +115,8 @@ export default function Sidebar({ collapsed, onToggle }) {
 
   const nav = user?.is_admin
     ? ADMIN_NAV
+    : user?.is_delivery_man
+    ? DELIVERY_NAV
     : isAuthenticated
     ? CUSTOMER_NAV
     : GUEST_NAV;
@@ -162,7 +183,11 @@ export default function Sidebar({ collapsed, onToggle }) {
             <div className="sb-user-info">
               <div className="sb-user-name">{user?.username}</div>
               <div className="sb-user-role">
-                {user?.is_admin ? "Administrator" : "Customer"}
+                {user?.is_admin
+                  ? "Administrator"
+                  : user?.is_delivery_man
+                  ? "Delivery Personnel"
+                  : "Customer"}
               </div>
             </div>
           </div>

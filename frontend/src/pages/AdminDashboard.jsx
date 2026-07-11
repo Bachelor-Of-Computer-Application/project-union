@@ -2,14 +2,29 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getAdminOrders, adminUpdateOrder, getDashboard } from "../api/orders";
 import {
-  getMenuManage, createMenuItem, updateMenuItem, deleteMenuItem,
-  getMenuCategories, getCategories, createCategory, updateCategory, deleteCategory,
+  getMenuManage,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  getMenuCategories,
+  adminGetMainCategories,
+  adminCreateMainCategory,
+  adminUpdateMainCategory,
+  adminDeleteMainCategory,
 } from "../api/menu";
-import { adminGetUsers, adminToggleUserActive, adminGetPayments } from "../api/accounts";
+import {
+  adminGetUsers,
+  adminToggleUserActive,
+  adminGetPayments,
+  adminGetDeliveryMen,
+  adminCreateDeliveryMan,
+  adminUpdateDeliveryMan,
+  adminDeleteDeliveryMan,
+} from "../api/accounts";
 import {
   CheckCircle, XCircle, Plus, PencilSimple,
   Trash, ClipboardText, ForkKnife, Users,
-  CurrencyDollar, UserSwitch, Tag,
+  CurrencyDollar, UserSwitch, Tag, Truck,
 } from "@phosphor-icons/react";
 
 const STATUS_COLORS = {
@@ -33,12 +48,19 @@ export default function AdminDashboard() {
   const [allCategories, setAllCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [deliveryMen, setDeliveryMen] = useState([]);
 
   // Menu form
   const [showMenuForm, setShowMenuForm] = useState(false);
   const [editMenuItem, setEditMenuItem] = useState(null);
   const [menuForm, setMenuForm] = useState({ name: "", category: "", price: "", description: "", is_available: true });
   const [imageFile, setImageFile] = useState(null);
+
+  // Delivery Man form
+  const [showDMForm, setShowDMForm] = useState(false);
+  const [editDM, setEditDM] = useState(null);
+  const [dmForm, setDMForm] = useState({ username: "", email: "", password: "", name: "", phone: "", vehicle_number: "" });
+  const [dmError, setDmError] = useState("");
 
   // Category form
   const [showCatForm, setShowCatForm] = useState(false);
@@ -48,10 +70,14 @@ export default function AdminDashboard() {
   const fetchAll = () => {
     setLoading(true);
     Promise.all([
-      getAdminOrders(), getMenuManage(), getDashboard(),
-      getMenuCategories(), adminGetUsers(), adminGetPayments(),
-      getCategories(),
-    ])
+  getAdminOrders(),
+  getMenuManage(),
+  getDashboard(),
+  getMenuCategories(),
+  adminGetUsers(),
+  adminGetPayments(),
+  adminGetMainCategories(),
+])
       .then(([o, m, d, c, u, p, cats]) => {
         setOrders(o.data); setMenuItems(m.data);
         setDashboard(d.data); setCategories(c.data);
@@ -95,16 +121,27 @@ export default function AdminDashboard() {
   const resetCatForm = () => { setShowCatForm(false); setEditCat(null); setCatName(""); };
   const handleEditCat = (cat) => { setEditCat(cat); setCatName(cat.name); setShowCatForm(true); };
   const handleCatSubmit = async () => {
-    if (!catName.trim()) return;
-    if (editCat) { await updateCategory(editCat.id, catName.trim()); }
-    else { await createCategory(catName.trim()); }
-    resetCatForm(); fetchAll();
-  };
+  if (!catName.trim()) return;
+
+  if (editCat) {
+    await adminUpdateMainCategory(editCat.id, {
+      name: catName.trim(),
+    });
+  } else {
+    await adminCreateMainCategory({
+      name: catName.trim(),
+    });
+  }
+
+  resetCatForm();
+  fetchAll();
+};
   const handleDeleteCat = async (id) => {
-    if (confirm("Delete this category? Menu items in it will also be deleted.")) {
-      await deleteCategory(id); fetchAll();
-    }
-  };
+  if (confirm("Delete this category?")) {
+    await adminDeleteMainCategory(id);
+    fetchAll();
+  }
+};
 
   // ── Order handlers ────────────────────────────────────────────────
   const handleOrderStatus = async (id, status) => {
