@@ -23,3 +23,7 @@ export const markOutForDelivery = (orderId) =>
 // Delivery profile
 export const getDeliveryProfile = () =>
   client.get("/accounts/me/");
+
+// Mark COD cash as collected after delivery
+export const markCashCollected = (orderId) =>
+  client.patch(`/orders/${orderId}/collect-cash/`);

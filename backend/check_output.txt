@@ -6,4 +6,4 @@
   Status: 401
   Body:   {"detail":"No active account found with the given credentials"}
 Press any key to continue . . . 
-Terminate batch job (Y/N)? 
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

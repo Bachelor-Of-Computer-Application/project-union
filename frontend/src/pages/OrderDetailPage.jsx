@@ -65,7 +65,7 @@ export default function OrderDetailPage() {
   const currentStep = STEPS.findIndex((s) => s.key === order?.status);
   const isCancelled = order?.status === "Cancelled";
   const isDelivered = order?.status === "Delivered";
-  const canCancel   = order?.status === "Order Placed" || order?.status === "Preparing";
+  const canCancel   = order?.status === "Order Placed";
   const progressPct = !isCancelled && currentStep >= 0
     ? Math.round(((currentStep - 1) / (STEPS.length - 1)) * 100)
     : 0;
@@ -156,7 +156,7 @@ export default function OrderDetailPage() {
                 Need to cancel?
               </div>
               <div style={{ fontSize: "0.8125rem", color: "var(--txt-2)", marginTop: 2 }}>
-                You can cancel this order while it's still waiting to be prepared.
+                You can only cancel before the kitchen starts preparing. Once it's being prepared, cancellation is not allowed.
               </div>
             </div>
           </div>

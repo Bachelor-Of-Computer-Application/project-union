@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { getDeliveryOrders, markDelivered, markOutForDelivery } from "../api/delivery";
-import { ClipboardText, MapPin, Phone, CheckCircle, Clock, ForkKnife, Info, Truck } from "@phosphor-icons/react";
+import { getDeliveryOrders, markDelivered, markOutForDelivery, markCashCollected } from "../api/delivery";
+import { ClipboardText, MapPin, Phone, CheckCircle, Clock, ForkKnife, Info, Truck, WarningCircle, CurrencyDollar } from "@phosphor-icons/react";
 
 const STATUS_CONFIG = {
   "Order Placed":     { badge: "badge-warning",   color: "var(--warning)",  icon: Clock },
@@ -44,6 +44,15 @@ export default function DeliveryOrders() {
   const handleDelivered = async (id) => {
     try {
       await markDelivered(id);
+      loadOrders();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCashCollected = async (id) => {
+    try {
+      await markCashCollected(id);
       loadOrders();
     } catch (err) {
       console.error(err);
@@ -155,6 +164,28 @@ export default function DeliveryOrders() {
                       <span>{order.phone}</span>
                     </div>
 
+                    {/* Payment Details */}
+                    <div style={{ background: "var(--s2)", border: "1.5px solid var(--border)", borderRadius: "var(--r-sm)", padding: 10, margin: "10px 0", fontSize: "0.875rem" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ color: "var(--txt-m)" }}>Payment:</span>
+                        <strong style={{ color: order.payment_status === "Paid" ? "var(--success)" : "var(--warning)" }}>
+                          {order.payment_method === "COD" ? "Cash on Delivery" : "eSewa"} ({order.payment_status})
+                        </strong>
+                      </div>
+                      {order.payment_method === "COD" && order.payment_status !== "Paid" && (
+                        <div style={{ color: "var(--danger)", fontWeight: 700, display: "flex", alignItems: "center", gap: 4, marginTop: 4 }}>
+                          <WarningCircle size={15} weight="fill" /> Collect Rs {order.total} Cash
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Order Notes */}
+                    {order.notes && (
+                      <div style={{ fontSize: "0.875rem", color: "var(--txt-2)", fontStyle: "italic", background: "var(--s2)", borderLeft: "3px solid var(--warning)", padding: "8px", borderRadius: "0 var(--r-sm) var(--r-sm) 0", margin: "10px 0" }}>
+                        <strong>Note:</strong> {order.notes}
+                      </div>
+                    )}
+
                     {/* Ordered Items */}
                     <div style={{ borderTop: "1px solid var(--border-l)", paddingTop: 12, marginTop: 12 }}>
                       <div style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--txt-m)", textTransform: "uppercase", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
@@ -203,9 +234,38 @@ export default function DeliveryOrders() {
                     </div>
                   )}
 
-                  {["Delivered", "Cancelled"].includes(order.status) && (
+                  {order.status === "Delivered" && order.payment_method === "COD" && order.payment_status !== "Paid" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%" }}>
+                      <div style={{
+                        background: "#fff3cd", border: "1px solid #ffc107",
+                        borderRadius: "var(--r-sm)", padding: "8px 10px",
+                        fontSize: "0.8125rem", color: "#856404",
+                        display: "flex", alignItems: "center", gap: 6,
+                      }}>
+                        <WarningCircle size={14} weight="fill" />
+                        Cash not collected yet — Rs {order.total}
+                      </div>
+                      <button
+                        className="btn btn-primary btn-block btn-sm"
+                        onClick={() => handleCashCollected(order.id)}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                      >
+                        <CurrencyDollar size={14} weight="fill" />
+                        Mark Cash Collected
+                      </button>
+                    </div>
+                  )}
+
+                  {order.status === "Delivered" && (order.payment_method === "eSewa" || order.payment_status === "Paid") && (
+                    <div style={{ width: "100%", textAlign: "center", fontSize: "0.8125rem", padding: "4px 0", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                      <CheckCircle size={14} weight="fill" style={{ color: "var(--success)" }} />
+                      <span style={{ color: "var(--success)", fontWeight: 600 }}>Delivered · Payment Confirmed</span>
+                    </div>
+                  )}
+
+                  {order.status === "Cancelled" && (
                     <div style={{ width: "100%", textAlign: "center", fontSize: "0.8125rem", color: "var(--txt-m)", padding: "4px 0" }}>
-                      Order Completed
+                      Order Cancelled
                     </div>
                   )}
                 </div>

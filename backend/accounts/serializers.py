@@ -7,18 +7,33 @@ from .models import Customer, Address, DeliveryMan
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=6)
-    name = serializers.CharField()
-    phone = serializers.CharField()
+    # write_only — these belong to Customer, not User, so DRF must never
+    # try to read them back from the User instance after creation.
+    name  = serializers.CharField(write_only=True)
+    phone = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
         fields = ["username", "email", "password", "name", "phone"]
 
+    def validate_username(self, value):
+        if User.objects.filter(username__iexact=value).exists():
+            raise serializers.ValidationError("This username is already taken.")
+        return value
+
+    def validate_email(self, value):
+        # Customer.email has unique=True — catch duplicates before hitting the DB
+        if Customer.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return value
+
     def create(self, validated_data):
-        name = validated_data.pop("name")
+        name  = validated_data.pop("name")
         phone = validated_data.pop("phone")
+        # Keep email for Customer creation before passing to create_user
+        email = validated_data["email"]
         user = User.objects.create_user(**validated_data)
-        Customer.objects.create(user=user, name=name, email=validated_data["email"], phone=phone)
+        Customer.objects.create(user=user, name=name, email=email, phone=phone)
         return user
 
 
@@ -88,7 +103,7 @@ class DeliveryManUpdateSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = DeliveryMan
-        fields = ["name", "phone", "vehicle_number"]
+        fields = ["name", "phone", "vehicle_number", "is_active"]
 
 
 # ── User (shared) ─────────────────────────────────────────────────────────────

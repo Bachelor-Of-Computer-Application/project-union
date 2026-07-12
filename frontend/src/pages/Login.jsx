@@ -28,11 +28,17 @@ export default function Login() {
           navigate("/cart");
           return;
         } catch {
-          navigate(user?.is_admin ? "/" : "/menu");
-          return;
+          // fall through to role-based redirect
         }
       }
-      navigate(user?.is_admin ? "/" : "/menu");
+      // Role-based redirect
+      if (user?.is_admin) {
+        navigate("/");
+      } else if (user?.is_delivery_man) {
+        navigate("/delivery");
+      } else {
+        navigate("/menu");
+      }
     } catch (err) {
       setError(err.response?.data?.detail || "Invalid username or password. Please try again.");
     } finally {

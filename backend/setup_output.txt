@@ -1,0 +1,11 @@
+=== Applying migrations ===
+Operations to perform:
+  Apply all migrations: accounts, admin, auth, contenttypes, inventory, menu, orders, sessions
+Running migrations:
+  No migrations to apply.
+
+=== System check ===
+System check identified no issues (0 silenced).
+
+=== Done! ===
+Press any key to continue . . . 

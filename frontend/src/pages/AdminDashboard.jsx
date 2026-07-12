@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { getAdminOrders, adminUpdateOrder, getDashboard } from "../api/orders";
 import {
@@ -25,6 +25,7 @@ import {
   CheckCircle, XCircle, Plus, PencilSimple,
   Trash, ClipboardText, ForkKnife, Users,
   CurrencyDollar, UserSwitch, Tag, Truck,
+  Package, Fire, ArrowRight, MapPin, ArrowsClockwise,
 } from "@phosphor-icons/react";
 
 const STATUS_COLORS = {
@@ -37,9 +38,20 @@ const STATUS_COLORS = {
 };
 const PAYMENT_COLORS = { Pending: "#f59e0b", Paid: "#22c55e" };
 
+// Tracking steps for the live view
+const TRACK_STEPS = ["Order Placed", "Preparing", "Ready", "Out for Delivery", "Delivered"];
+const TRACK_ICONS = { "Order Placed": Package, Preparing: Fire, Ready: CheckCircle, "Out for Delivery": Truck, Delivered: CheckCircle };
+
+const NEXT_STATUS = {
+  "Order Placed":     "Preparing",
+  "Preparing":        "Ready",
+  "Ready":            "Out for Delivery",
+  "Out for Delivery": "Delivered",
+};
+
 export default function AdminDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [tab, setTab] = useState(searchParams.get("tab") || "orders");
+  const [tab, setTab] = useState(searchParams.get("tab") || "tracking");
   const [orders, setOrders] = useState([]);
   const [menuItems, setMenuItems] = useState([]);
   const [dashboard, setDashboard] = useState(null);
@@ -70,19 +82,21 @@ export default function AdminDashboard() {
   const fetchAll = () => {
     setLoading(true);
     Promise.all([
-  getAdminOrders(),
-  getMenuManage(),
-  getDashboard(),
-  getMenuCategories(),
-  adminGetUsers(),
-  adminGetPayments(),
-  adminGetMainCategories(),
-])
-      .then(([o, m, d, c, u, p, cats]) => {
+      getAdminOrders(),
+      getMenuManage(),
+      getDashboard(),
+      getMenuCategories(),
+      adminGetUsers(),
+      adminGetPayments(),
+      adminGetMainCategories(),
+      adminGetDeliveryMen(),
+    ])
+      .then(([o, m, d, c, u, p, cats, dm]) => {
         setOrders(o.data); setMenuItems(m.data);
         setDashboard(d.data); setCategories(c.data);
         setUsers(u.data); setPayments(p.data);
         setAllCategories(cats.data);
+        setDeliveryMen(dm.data);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -93,6 +107,15 @@ export default function AdminDashboard() {
     const t = searchParams.get("tab");
     if (t) setTab(t);
   }, [searchParams]);
+
+  // Auto-refresh every 30s when on the live tracking tab
+  useEffect(() => {
+    if (tab !== "tracking") return;
+    const interval = setInterval(() => {
+      getAdminOrders().then((res) => setOrders(res.data)).catch(() => {});
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [tab]);
 
   const switchTab = (t) => { setTab(t); setSearchParams({}); };
 
@@ -150,9 +173,55 @@ export default function AdminDashboard() {
   const handlePaymentStatus = async (id, payment_status) => {
     await adminUpdateOrder(id, { payment_status }); fetchAll();
   };
+  const handleAssignDeliveryMan = async (orderId, deliveryManId) => {
+    const assigned_to = deliveryManId ? parseInt(deliveryManId, 10) : null;
+    await adminUpdateOrder(orderId, { assigned_to }); fetchAll();
+  };
 
   const handleToggleUser = async (userId, currentActive) => {
     await adminToggleUserActive(userId, !currentActive); fetchAll();
+  };
+
+  // ── Delivery Man handlers ─────────────────────────────────────────
+  const resetDMForm = () => {
+    setDMForm({ username: "", email: "", password: "", name: "", phone: "", vehicle_number: "" });
+    setEditDM(null); setShowDMForm(false); setDmError("");
+  };
+  const handleEditDM = (dm) => {
+    setDMForm({ username: dm.username, email: dm.email || "", password: "", name: dm.name, phone: dm.phone, vehicle_number: dm.vehicle_number || "" });
+    setEditDM(dm); setShowDMForm(true); setDmError("");
+  };
+  const handleDMSubmit = async (e) => {
+    if (e) e.preventDefault();
+    setDmError("");
+    try {
+      if (editDM) {
+        await adminUpdateDeliveryMan(editDM.id, {
+          name: dmForm.name,
+          phone: dmForm.phone,
+          vehicle_number: dmForm.vehicle_number,
+        });
+      } else {
+        if (!dmForm.password) {
+          setDmError("Password is required for new delivery personnel.");
+          return;
+        }
+        await adminCreateDeliveryMan(dmForm);
+      }
+      resetDMForm(); fetchAll();
+    } catch (err) {
+      const data = err.response?.data;
+      const msg = data ? Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(" ") : v}`).join(" | ") : "Failed to save delivery driver.";
+      setDmError(msg);
+    }
+  };
+  const handleDeleteDM = async (id) => {
+    if (confirm("Are you sure you want to delete this delivery man?")) {
+      await adminDeleteDeliveryMan(id); fetchAll();
+    }
+  };
+  const handleToggleDMActive = async (id, currentActive) => {
+    await adminUpdateDeliveryMan(id, { is_active: !currentActive }); fetchAll();
   };
 
   if (loading) {
@@ -160,11 +229,13 @@ export default function AdminDashboard() {
   }
 
   const TABS = [
-    { key: "orders",     label: "Orders",     icon: ClipboardText,  count: orders.length },
-    { key: "menu",       label: "Menu",        icon: ForkKnife,      count: menuItems.length },
-    { key: "categories", label: "Categories",  icon: Tag,            count: allCategories.length },
-    { key: "users",      label: "Users",       icon: Users,          count: users.length },
-    { key: "payments",   label: "Payments",    icon: CurrencyDollar, count: payments.length },
+    { key: "tracking",     label: "Live Tracking", icon: ArrowsClockwise, count: orders.filter(o => !["Delivered","Cancelled"].includes(o.status)).length },
+    { key: "orders",       label: "Orders",        icon: ClipboardText,   count: orders.length },
+    { key: "menu",         label: "Menu",          icon: ForkKnife,       count: menuItems.length },
+    { key: "categories",   label: "Categories",    icon: Tag,             count: allCategories.length },
+    { key: "users",        label: "Users",         icon: Users,           count: users.length },
+    { key: "delivery_men", label: "Delivery Men",  icon: Truck,           count: deliveryMen.length },
+    { key: "payments",     label: "Payments",      icon: CurrencyDollar,  count: payments.length },
   ];
 
   return (
@@ -213,6 +284,211 @@ export default function AdminDashboard() {
         ))}
       </div>
 
+      {/* ── LIVE TRACKING TAB ──────────────────────────────────────── */}
+      {tab === "tracking" && (
+        <div className="section">
+          <div className="section-header" style={{ marginBottom: 20 }}>
+            <h2>Live Order Tracking</h2>
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => getAdminOrders().then((res) => setOrders(res.data))}
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
+              <ArrowsClockwise size={14} weight="bold" /> Refresh
+            </button>
+          </div>
+
+          {/* Active order cards — one per non-completed order */}
+          {orders.filter(o => !["Delivered", "Cancelled"].includes(o.status)).length === 0 ? (
+            <div style={{
+              padding: 48, textAlign: "center", color: "var(--text-muted)",
+              border: "1.5px dashed var(--border)", borderRadius: "var(--r)",
+              background: "var(--surface)",
+            }}>
+              <CheckCircle size={36} weight="duotone" style={{ color: "var(--success)", marginBottom: 10 }} />
+              <p style={{ fontWeight: 600, color: "var(--txt)", margin: 0 }}>All caught up!</p>
+              <p style={{ fontSize: "0.875rem", marginTop: 4 }}>No active orders right now.</p>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 20 }}>
+              {orders
+                .filter(o => !["Delivered", "Cancelled"].includes(o.status))
+                .map((o) => {
+                  const currentIdx = TRACK_STEPS.indexOf(o.status);
+                  const nextSt = NEXT_STATUS[o.status];
+                  const progressPct = Math.max(0, Math.round(((currentIdx) / (TRACK_STEPS.length - 1)) * 100));
+
+                  return (
+                    <div
+                      key={o.id}
+                      style={{
+                        background: "var(--surface)",
+                        border: `1.5px solid var(--border)`,
+                        borderLeft: `4px solid ${STATUS_COLORS[o.status] || "#6b7280"}`,
+                        borderRadius: "var(--r)",
+                        padding: "20px 24px",
+                        boxShadow: "var(--sh-sm)",
+                      }}
+                    >
+                      {/* Order header row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+                        <strong style={{ fontSize: "1rem", color: "var(--txt)" }}>Order #{o.id}</strong>
+                        <span style={{
+                          background: STATUS_COLORS[o.status] + "20",
+                          color: STATUS_COLORS[o.status],
+                          fontSize: "0.75rem", fontWeight: 700,
+                          padding: "3px 10px", borderRadius: "var(--r-full)",
+                        }}>
+                          {o.status}
+                        </span>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>
+                          {o.customer_name}
+                        </span>
+                        <span style={{ marginLeft: "auto", fontWeight: 700, color: "var(--p-dark)", fontFamily: "var(--fh)" }}>
+                          Rs {o.total_amount}
+                        </span>
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                          {new Date(o.order_date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ marginBottom: 20 }}>
+                        <div style={{ height: 6, background: "var(--s2)", borderRadius: "var(--r-f)", overflow: "hidden" }}>
+                          <div style={{
+                            height: "100%",
+                            width: `${progressPct}%`,
+                            background: `linear-gradient(90deg, var(--success), ${STATUS_COLORS[o.status]})`,
+                            borderRadius: "var(--r-f)",
+                            transition: "width 0.6s ease",
+                          }} />
+                        </div>
+                      </div>
+
+                      {/* Step indicators */}
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, marginBottom: 20 }}>
+                        {TRACK_STEPS.map((step, i) => {
+                          const Icon = TRACK_ICONS[step];
+                          const done   = i < currentIdx;
+                          const active = i === currentIdx;
+                          return (
+                            <div
+                              key={step}
+                              style={{ flex: 1, textAlign: "center", cursor: "default" }}
+                            >
+                              <div style={{
+                                width: 36, height: 36,
+                                borderRadius: "50%",
+                                margin: "0 auto 6px",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                background: done ? "var(--success)" : active ? STATUS_COLORS[step] : "var(--s2)",
+                                color: (done || active) ? "#fff" : "var(--text-muted)",
+                                border: active ? `2px solid ${STATUS_COLORS[step]}` : "2px solid transparent",
+                                boxShadow: active ? `0 0 0 3px ${STATUS_COLORS[step]}30` : "none",
+                                transition: "all 0.3s ease",
+                              }}>
+                                {done
+                                  ? <CheckCircle size={16} weight="fill" />
+                                  : <Icon size={16} weight={active ? "fill" : "regular"} />}
+                              </div>
+                              <div style={{
+                                fontSize: "0.6875rem",
+                                fontWeight: active ? 700 : 500,
+                                color: active ? STATUS_COLORS[step] : done ? "var(--success)" : "var(--text-muted)",
+                                lineHeight: 1.3,
+                              }}>
+                                {step === "Out for Delivery" ? "Out for\nDelivery" : step}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Action row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderTop: "1px solid var(--border-l)", paddingTop: 14 }}>
+                        {/* Primary action button — advance to next status */}
+                        {nextSt && (
+                          <button
+                            className="btn btn-primary btn-sm"
+                            onClick={() => handleOrderStatus(o.id, nextSt)}
+                            style={{ display: "flex", alignItems: "center", gap: 6 }}
+                          >
+                            {nextSt === "Preparing"        && <Fire size={13} weight="fill" />}
+                            {nextSt === "Ready"            && <CheckCircle size={13} weight="fill" />}
+                            {nextSt === "Out for Delivery" && <Truck size={13} weight="fill" />}
+                            {nextSt === "Delivered"        && <CheckCircle size={13} weight="fill" />}
+                            Mark as {nextSt}
+                          </button>
+                        )}
+
+                        {/* Full status select for any manual override */}
+                        <select
+                          value={o.status}
+                          onChange={(e) => handleOrderStatus(o.id, e.target.value)}
+                          className="form-select-sm"
+                          style={{ minWidth: 160 }}
+                        >
+                          {["Order Placed","Preparing","Ready","Out for Delivery","Delivered","Cancelled"].map(s => (
+                            <option key={s}>{s}</option>
+                          ))}
+                        </select>
+
+                        {/* Delivery man assign */}
+                        <select
+                          value={o.assigned_to || ""}
+                          onChange={(e) => handleAssignDeliveryMan(o.id, e.target.value)}
+                          className="form-select-sm"
+                          style={{ minWidth: 140 }}
+                        >
+                          <option value="">Assign Driver…</option>
+                          {deliveryMen.filter(dm => dm.is_active || o.assigned_to === dm.id).map(dm => (
+                            <option key={dm.id} value={dm.id}>{dm.name}</option>
+                          ))}
+                        </select>
+
+                        {/* Address quick-view */}
+                        {o.delivery_address_detail && (
+                          <span style={{ fontSize: "0.8125rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+                            <MapPin size={13} weight="fill" style={{ color: "var(--p)", flexShrink: 0 }} />
+                            {o.delivery_address_detail.full_address}, {o.delivery_address_detail.city}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {/* Recently delivered orders (last 5) */}
+          {orders.filter(o => o.status === "Delivered").length > 0 && (
+            <div style={{ marginTop: 32 }}>
+              <h3 style={{ fontSize: "0.9375rem", fontWeight: 700, color: "var(--txt-m)", marginBottom: 12, textTransform: "uppercase", letterSpacing: ".5px" }}>
+                Recently Delivered
+              </h3>
+              <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: "var(--r)", overflow: "hidden" }}>
+                <table className="table">
+                  <thead><tr><th>Order</th><th>Customer</th><th>Amount</th><th>Driver</th><th>Date</th></tr></thead>
+                  <tbody>
+                    {orders.filter(o => o.status === "Delivered").slice(0, 5).map(o => (
+                      <tr key={o.id}>
+                        <td><strong>#{o.id}</strong></td>
+                        <td>{o.customer_name}</td>
+                        <td style={{ fontWeight: 600 }}>Rs {o.total_amount}</td>
+                        <td style={{ color: "var(--text-muted)" }}>{o.assigned_to_name || "—"}</td>
+                        <td style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>
+                          {new Date(o.order_date).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── ORDERS TAB ─────────────────────────────────────────────── */}
       {tab === "orders" && (
         <div className="section">
@@ -223,7 +499,7 @@ export default function AdminDashboard() {
           <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: "var(--r)", overflow: "hidden" }}>
             <div className="table-responsive">
               <table className="table">
-                <thead><tr><th>Order ID</th><th>Customer</th><th>Amount</th><th>Status</th><th>Payment</th><th>Date</th></tr></thead>
+                <thead><tr><th>Order ID</th><th>Customer</th><th>Amount</th><th>Status</th><th>Payment</th><th>Delivery Man</th><th>Date</th></tr></thead>
                 <tbody>
                   {orders.map((o) => (
                     <tr key={o.id}>
@@ -245,6 +521,24 @@ export default function AdminDashboard() {
                             <option>Pending</option><option>Paid</option>
                           </select>
                         </div>
+                      </td>
+                      <td>
+                        <select
+                          value={o.assigned_to || ""}
+                          onChange={(e) => handleAssignDeliveryMan(o.id, e.target.value)}
+                          className="form-select-sm"
+                          style={{ maxWidth: 140 }}
+                        >
+                          <option value="">Unassigned</option>
+                          {deliveryMen.map((dm) => {
+                            if (!dm.is_active && o.assigned_to !== dm.id) return null;
+                            return (
+                              <option key={dm.id} value={dm.id}>
+                                {dm.name} {!dm.is_active && "(Inactive)"}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </td>
                       <td style={{ color: "var(--text-muted)", fontSize: "0.8125rem" }}>
                         {new Date(o.order_date).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"})}
@@ -421,6 +715,159 @@ export default function AdminDashboard() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELIVERY MEN TAB ────────────────────────────────────────── */}
+      {tab === "delivery_men" && (
+        <div className="section">
+          <div className="section-header">
+            <h2>Delivery Personnel</h2>
+            <button className="btn btn-primary btn-sm" onClick={() => { resetDMForm(); setShowDMForm(true); }}>
+              <Plus size={15} weight="bold"/> Add Delivery Driver
+            </button>
+          </div>
+
+          {showDMForm && (
+            <div className="form-card" style={{ marginBottom: 20 }}>
+              <h3>{editDM ? `Edit Driver: ${editDM.username}` : "Add New Delivery Driver"}</h3>
+              {dmError && (
+                <div className="alert alert-error" style={{ marginBottom: 14 }}>
+                  {dmError}
+                </div>
+              )}
+              <form onSubmit={handleDMSubmit}>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Username</label>
+                    <input
+                      value={dmForm.username}
+                      onChange={(e) => setDMForm({ ...dmForm, username: e.target.value })}
+                      placeholder="e.g. driver_hari"
+                      disabled={!!editDM}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Email Address</label>
+                    <input
+                      type="email"
+                      value={dmForm.email}
+                      onChange={(e) => setDMForm({ ...dmForm, email: e.target.value })}
+                      placeholder="driver@example.com"
+                      disabled={!!editDM}
+                    />
+                  </div>
+                </div>
+
+                {!editDM && (
+                  <div className="form-group">
+                    <label>Password</label>
+                    <input
+                      type="password"
+                      value={dmForm.password}
+                      onChange={(e) => setDMForm({ ...dmForm, password: e.target.value })}
+                      placeholder="Minimum 6 characters"
+                      required
+                    />
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Full Name</label>
+                    <input
+                      value={dmForm.name}
+                      onChange={(e) => setDMForm({ ...dmForm, name: e.target.value })}
+                      placeholder="Hari Prasad"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone Number</label>
+                    <input
+                      value={dmForm.phone}
+                      onChange={(e) => setDMForm({ ...dmForm, phone: e.target.value })}
+                      placeholder="98XXXXXXXX"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Vehicle Number</label>
+                  <input
+                    value={dmForm.vehicle_number}
+                    onChange={(e) => setDMForm({ ...dmForm, vehicle_number: e.target.value })}
+                    placeholder="e.g. BA 2 PA 1234"
+                  />
+                </div>
+
+                <div className="form-actions">
+                  <button type="submit" className="btn btn-primary">
+                    {editDM ? "Save Changes" : "Create Driver"}
+                  </button>
+                  <button type="button" className="btn btn-outline" onClick={resetDMForm}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          <div style={{ background: "var(--surface)", border: "1.5px solid var(--border)", borderRadius: "var(--r)", overflow: "hidden" }}>
+            <div className="table-responsive">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Driver Name</th>
+                    <th>Username</th>
+                    <th>Phone</th>
+                    <th>Vehicle</th>
+                    <th>Active Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deliveryMen.map((dm) => (
+                    <tr key={dm.id}>
+                      <td><strong>{dm.name}</strong></td>
+                      <td style={{ color: "var(--text-muted)" }}>{dm.username}</td>
+                      <td>{dm.phone}</td>
+                      <td style={{ color: "var(--text-muted)" }}>{dm.vehicle_number || "—"}</td>
+                      <td>
+                        {dm.is_active ? (
+                          <span className="badge badge-success">Active</span>
+                        ) : (
+                          <span className="badge badge-danger">Inactive</span>
+                        )}
+                      </td>
+                      <td>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button className="btn btn-xs btn-outline" onClick={() => handleEditDM(dm)}>
+                            <PencilSimple size={13}/> Edit
+                          </button>
+                          <button className="btn btn-xs btn-outline" onClick={() => handleToggleDMActive(dm.id, dm.is_active)}>
+                            <UserSwitch size={13}/> {dm.is_active ? "Deactivate" : "Activate"}
+                          </button>
+                          <button className="btn btn-xs btn-danger" onClick={() => handleDeleteDM(dm.id)}>
+                            <Trash size={13}/> Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {deliveryMen.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ textAlign: "center", color: "var(--text-muted)", padding: 24 }}>
+                        No delivery personnel registered yet.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

@@ -30,9 +30,21 @@ export default function Register() {
       navigate("/login");
     } catch (err) {
       const data = err.response?.data;
-      const msg = typeof data === "object"
-        ? Object.entries(data).map(([k, v]) => `${k}: ${[].concat(v).join(", ")}`).join(" | ")
-        : "Registration failed. Please try again.";
+      let msg = "Registration failed. Please try again.";
+      if (data) {
+        if (typeof data === "string") {
+          msg = data;
+        } else if (typeof data === "object") {
+          // DRF field errors: { email: ["..."], username: ["..."] }
+          const fieldMessages = Object.entries(data)
+            .map(([field, errors]) => {
+              const label = field === "non_field_errors" ? "" : `${field}: `;
+              return `${label}${[].concat(errors).join(", ")}`;
+            })
+            .join(" | ");
+          if (fieldMessages) msg = fieldMessages;
+        }
+      }
       setError(msg);
     } finally {
       setLoading(false);

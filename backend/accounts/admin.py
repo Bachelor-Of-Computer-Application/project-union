@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Customer, Address
+from .models import Customer, Address, DeliveryMan
 
 
 class AddressInline(admin.TabularInline):
@@ -19,3 +19,15 @@ class CustomerAdmin(admin.ModelAdmin):
 class AddressAdmin(admin.ModelAdmin):
     list_display = ["label", "customer", "city", "is_default"]
     list_filter = ["is_default", "city"]
+
+
+@admin.register(DeliveryMan)
+class DeliveryManAdmin(admin.ModelAdmin):
+    list_display = ["name", "username_display", "phone", "vehicle_number", "is_active", "created_at"]
+    list_filter = ["is_active"]
+    search_fields = ["name", "phone", "user__username"]
+    readonly_fields = ["created_at"]
+
+    @admin.display(description="Username")
+    def username_display(self, obj):
+        return obj.user.username

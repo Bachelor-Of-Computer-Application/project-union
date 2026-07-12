@@ -14,25 +14,26 @@ from .views import (
 )
 
 urlpatterns = [
-    path("register/", RegisterAPIView.as_view(), name="register"),
-    path("me/", UserDetailAPIView.as_view(), name="user-detail"),
-    path("me/update/", ProfileUpdateAPIView.as_view(), name="profile-update"),
-    path("me/change-password/", PasswordChangeAPIView.as_view(), name="change-password"),
-    path("addresses/", AddressListCreateAPIView.as_view(), name="address-list"),
-    path("addresses/<int:pk>/", AddressDetailAPIView.as_view(), name="address-detail"),
-    path("admin/users/", AdminUserListAPIView.as_view(), name="admin-users"),
+    # Public
+    path("register/",             RegisterAPIView.as_view(),              name="register"),
+
+    # Authenticated user
+    path("me/",                   UserDetailAPIView.as_view(),            name="user-detail"),
+    path("me/update/",            ProfileUpdateAPIView.as_view(),         name="profile-update"),
+    path("me/change-password/",   PasswordChangeAPIView.as_view(),        name="change-password"),
+
+    # Addresses
+    path("addresses/",            AddressListCreateAPIView.as_view(),     name="address-list"),
+    path("addresses/<int:pk>/",   AddressDetailAPIView.as_view(),         name="address-detail"),
+
+    # Admin — users
+    path("admin/users/",          AdminUserListAPIView.as_view(),         name="admin-users"),
     path("admin/users/<int:user_id>/", AdminUserDetailAPIView.as_view(), name="admin-user-detail"),
-    path("admin/payments/", AdminPaymentsAPIView.as_view(), name="admin-payments"),
 
-        path(
-        "admin/delivery-men/",
-        AdminDeliveryManListCreateAPIView.as_view(),
-        name="admin-delivery-men",
-    ),
+    # Admin — payments
+    path("admin/payments/",       AdminPaymentsAPIView.as_view(),         name="admin-payments"),
 
-    path(
-        "admin/delivery-men/<int:pk>/",
-        AdminDeliveryManDetailAPIView.as_view(),
-        name="admin-delivery-man-detail",
-    ),
+    # Admin — delivery men
+    path("admin/delivery-men/",   AdminDeliveryManListCreateAPIView.as_view(), name="admin-delivery-men"),
+    path("admin/delivery-men/<int:pk>/", AdminDeliveryManDetailAPIView.as_view(), name="admin-delivery-man-detail"),
 ]
